@@ -1,0 +1,102 @@
+import yaml
+from typing import Dict, List
+
+class CommonConfig:
+    def __init__(
+            self,
+            motion_mode: str,
+            motion_mode_start_cmd: str,
+            motion_mode_cmd_response_ok: str,
+            motion_mode_cmd_response_notfound: str,
+            motion_mode_stop_cmd: str,
+            motion_mode_stop_response: str,
+    ):
+        self.motion_mode = motion_mode
+        self.motion_mode_start_cmd = motion_mode_start_cmd
+        self.motion_mode_cmd_response_ok = motion_mode_cmd_response_ok
+        self.motion_mode_cmd_response_notfound = motion_mode_cmd_response_notfound
+        self.motion_mode_stop_cmd = motion_mode_stop_cmd
+        self.motion_mode_stop_response = motion_mode_stop_response
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, any]):
+        return cls(**config_dict)
+
+
+class AgentsConfig:
+    def __init__(
+            self,
+            show_detected_results: bool,
+            yolo_verbose: bool,
+            yolo_model: str,  # model: yolov8n.pt  yolov8s.pt  yolov8m.pt  yolov8l.pt  yolov8x.pt
+            yolo_device: str, # device: cpu  cuda mps
+            yolo_frame_interval: float,
+            stt_type: str, 
+            max_buffered_speech: float,
+            enable_audio: bool,
+            enable_video: bool,
+            vision_lang_interval: int,
+            min_silence_duration: float,
+            send_vl_result: bool,
+    ):
+        self.show_detected_results = show_detected_results
+        self.yolo_verbose = yolo_verbose
+        self.yolo_model = yolo_model
+        self.yolo_device = yolo_device
+        self.yolo_frame_interval = yolo_frame_interval
+        self.stt_type = stt_type
+        self.max_buffered_speech = max_buffered_speech
+        self.enable_audio = enable_audio
+        self.enable_video = enable_video
+        self.vision_lang_interval = vision_lang_interval
+        self.min_silence_duration = min_silence_duration
+        self.send_vl_result = send_vl_result
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, any]):
+        return cls(**config_dict)
+
+class LLMConfig:
+    def __init__(
+            self,
+            engine: str,
+            model: str,
+            location: str,
+            vl_engine: str,
+            vl_model: str,
+
+    ):
+        self.engine = engine.lower()
+        self.model = model.lower()
+        self.location = location
+        self.vl_engine = vl_engine.lower()
+        self.vl_model = vl_model.lower()
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, any]):
+        return cls(**config_dict)
+    
+class APIConfig:
+    def __init__(
+            self,
+            url_prefix: str,
+            www_root: str,
+    ):
+        self.url_prefix = url_prefix
+        self.www_root = www_root
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, any]):
+        return cls(**config_dict)
+
+class Config:
+    def __init__(self, config_file="config.yaml"):
+        self.config_file = config_file
+        all_config: Dict[str, any] = yaml.safe_load(open(config_file, 'r', encoding='utf-8'))
+        self.common: CommonConfig = CommonConfig.from_dict(all_config['common'])
+        self.agents: AgentsConfig = AgentsConfig.from_dict(all_config['agents'])
+        self.llm: LLMConfig = LLMConfig.from_dict(all_config['llm'])
+        self.api: APIConfig = APIConfig.from_dict(all_config['api'])
+
+
+config = Config()

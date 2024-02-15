@@ -1,0 +1,34 @@
+common:
+  motion_mode: "FOLLOW"
+  motion_mode_start_cmd: "你好"
+  motion_mode_cmd_response_ok: "好的，来了"
+  motion_mode_cmd_response_notfound: "还没看清呢!站我前面1米的地方"
+  motion_mode_stop_cmd: "行动终止"
+  motion_mode_stop_response: "收到"
+
+agents:
+  show_detected_results: True
+  yolo_verbose: True
+  # model: yolov8n.pt  yolov8s.pt  yolov8m.pt  yolov8l.pt  yolov8x.pt
+  yolo_model: "yolov8m.pt"
+  # device: cpu  cuda mps
+  yolo_device: "mps"
+  yolo_frame_interval: 0.5
+  stt_type: "whisper_api" # whisper_api local_whisper_original local_whisper_fast xf_api
+  max_buffered_speech: 15
+  enable_audio: True
+  enable_video: True
+  vision_lang_interval: 60
+  send_vl_result: False
+  min_silence_duration: 3
+
+llm:
+  engine: "QWEN"  # CHATGPT QWEN
+  model: "qwen-max" #chagpt: gpt-3.5-turbo-0125 gpt-4-0125-preview ;  qwen: qwen-max 
+  location: "cn"
+  vl_engine: "qwen"
+  vl_model: "qwen-vl-plus" # qwen-vl-plus qwen-vl-max
+
+api:
+  www_root: "/var/www/html/"
+  url_prefix: "http://localhost:8080/"
