@@ -21,6 +21,8 @@ agents:
   vision_lang_interval: 60
   send_vl_result: False
   min_silence_duration: 3
+  min_speaking_duration: 0.3
+  vad_threshold: 0.3
 
 llm:
   engine: "QWEN"  # CHATGPT QWEN

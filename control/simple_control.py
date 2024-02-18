@@ -4,6 +4,36 @@ import logging
 from detect.yolov8 import YoloV8Detector
 from common.config import config
 
+
+# 向前 'A'
+# 向右前 'B'
+# 向右 'C'
+# 向右后 'D'
+# 向后 'E'
+# 向左后 'F'
+# 向左 'G'
+# 向左前 'H'
+# 加速 'X'
+# 减速 'Y'
+# 停止 'Z'
+# 开始说话 'S'
+# 停止说话 'T'
+class Command:
+    FORWARD = 'A'
+    RIGHT_FRONT = 'B'
+    RIGHT = 'C'
+    RIGHT_BACK = 'D'
+    BACK = 'E'
+    LEFT_BACK = 'F'
+    LEFT = 'G'
+    LEFT_FRONT = 'H'
+    ACCELERATE = 'X'
+    DECELERATE = 'Y'
+    STOP = 'Z'
+    START_SPEAK = 'S'
+    STOP_SPEAK = 'T'
+
+
 class SimpleControl:
     def __init__(self, detector: YoloV8Detector):
         self.load_saved_state()
@@ -124,24 +154,24 @@ class SimpleControl:
             # 前进
             if dx > threshold_lateral:
                 # 向右前进
-                return 'B'
+                return Command.RIGHT_FRONT
             elif dx < -threshold_lateral:
                 # 向左前进
-                return 'H'
+                return Command.LEFT_FRONT
             else:
                 # 前进
-                return 'A'
+                return Command.FORWARD
         elif current_diagonal_length > dst_diagonal_length * (1 + threshold_forward):
             # 后退
             if dx > threshold_lateral:
                 # 向左后退
-                return 'F'
+                return Command.LEFT_BACK
             elif dx < -threshold_lateral:
                 # 向右后退
-                return 'D'
+                return Command.RIGHT_BACK
             else:
                 # 后退
-                return 'E'
+                return Command.BACK
         else:
-                return 'Z'
+                return Command.STOP
         

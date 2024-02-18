@@ -218,3 +218,4 @@ simple_control.json
 config.yaml
 
 tmp/
+debug*.sh

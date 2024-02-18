@@ -37,7 +37,9 @@ class AgentsConfig:
             enable_video: bool,
             vision_lang_interval: int,
             min_silence_duration: float,
+            min_speaking_duration: float,
             send_vl_result: bool,
+            vad_threshold: float,
     ):
         self.show_detected_results = show_detected_results
         self.yolo_verbose = yolo_verbose
@@ -50,7 +52,9 @@ class AgentsConfig:
         self.enable_video = enable_video
         self.vision_lang_interval = vision_lang_interval
         self.min_silence_duration = min_silence_duration
+        self.min_speaking_duration = min_speaking_duration
         self.send_vl_result = send_vl_result
+        self.vad_threshold = vad_threshold
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, any]):

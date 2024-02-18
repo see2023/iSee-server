@@ -55,6 +55,7 @@ class LLMBase:
         self._complete_response: str = ""
         self._stream_timeout: float = 15
         self._response_timeout: float = 30
+        self._responsing_txt: str = ""
         self._history_count: int = history_count
 
     @classmethod
@@ -66,9 +67,13 @@ class LLMBase:
     def is_responsing(self) -> bool:
         return self._producing_response
 
-    def interrupt(self):
-        if self._producing_response:
+    def interrupt(self, current_text: str):
+        if self._producing_response and current_text != self._responsing_txt:
+            logging.info("Interrupting llm response =============================")
             self._needs_interrupt = True
+    
+    def set_responsing_text(self, text: str):
+        self._responsing_txt = text
 
     def get_complete_response(self) -> str:
         return self._complete_response

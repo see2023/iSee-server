@@ -8,7 +8,7 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import redis
 from db.redis_cli import get_redis_client, REDIS_CHAT_KEY, REDIS_PREFIX, REDIS_MQ_KEY
-from agents.chat_ext import CHAT_MEMBER_APP, CHAT_MEMBER_ASSITANT,ChatExtManager
+from agents.chat_ext import CHAT_MEMBER_APP, CHAT_MEMBER_ASSITANT,ChatExtManager, ChatExtMessage
 from llm import get_llm, get_vl_LLM, LLMBase, VisualLLMBase
 from typing import Callable
 from livekit import rtc
@@ -82,8 +82,11 @@ class MessageConsumer():
                 self._chat = ChatExtManager(self._room)
                 await asyncio.sleep(0.5)
 
-                def process_chat(msg: rtc.ChatMessage):
+                def process_chat(msg: ChatExtMessage):
                     logging.info("received chat message: %s", msg.message)
+                    if msg.srcname == CHAT_MEMBER_APP and msg.message is not None and len(msg.message) > 0:
+                        self.llm_engine.interrupt(msg.message)
+
                 self._chat.on("message_received", process_chat)
 
                 # find app user
@@ -183,13 +186,15 @@ class MessageConsumer():
                         logging.info("Received motion mode command, skip this message")
                         continue
                 else:
-                    await self.check_new_picture()
+                    if config.agents.vision_lang_interval>0:
+                        await self.check_new_picture()
                     continue
 
                 if self.llm_engine.is_responsing():
-                    self.llm_engine.interrupt()
+                    self.llm_engine.interrupt(msg_text)
                     logging.info("LLM is responsing, skip this message: " + msg_text)
                     continue
+                self.llm_engine.set_responsing_text(msg_text)
                 try:
                     async for output in self.llm_engine.generate_text_streamed(self._user, config.llm.model):
                         if output:

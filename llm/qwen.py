@@ -26,6 +26,7 @@ class Qwen(LLMBase):
         if not history or len(history) == 0:
             logging.info("No history found for user_id: %s", user_id)
             yield ""
+            return
         responses = Generation.call(
             model,
             messages=history,
@@ -35,6 +36,7 @@ class Qwen(LLMBase):
         )
         full_content: str = ''  # with incrementally we need to merge output.
         one_sentence: str = ''
+        self._producing_response = True
 
         # while True:
         for response in responses:

@@ -17,13 +17,14 @@ load_dotenv()
 from common.config import config
 
 from livekit import agents, rtc
-from livekit.plugins import openai, silero
+from livekit.plugins import openai 
 from detect.yolov8 import YoloV8Detector
+from vad import VAD
 import matplotlib.pyplot as plt
 from PIL import ImageDraw, ImageFont, Image
 import matplotlib
 from llm.llm_base import LLMBase, VisualLLMBase
-from control.simple_control import SimpleControl
+from control.simple_control import SimpleControl, Command
 font_path = "/Library/Fonts/Arial Unicode.ttf" if sys.platform == "darwin" else "arial.ttf"
 font_size = 40
 font = ImageFont.truetype(font_path, font_size)
@@ -85,7 +86,7 @@ class ApiAgent:
         self.catch_follow_pos = False
         self.motion_control = SimpleControl(self.detector)
 
-        self.vad = silero.VAD()
+        self.vad = VAD()
         logging.info("API agent created")
 
         self.ctx = ctx
@@ -102,7 +103,7 @@ class ApiAgent:
         self.results = []
 
         self.show_detected_results = config.agents.show_detected_results
-        if self.show_detected_results:
+        if self.show_detected_results and config.agents.enable_video:
             plt.ion()
             self.fig = plt.figure("Video")
             self.im =   plt.imshow(np.zeros((10, 10, 3)))
@@ -130,7 +131,7 @@ class ApiAgent:
                     if config.agents.vision_lang_interval > 0:
                         self.ctx.create_task(self.vision_lang_worker())
 
-        def process_chat(msg: rtc.ChatMessage):
+        def process_chat(msg: chat_ext.ChatExtMessage):
             logging.info("received chat message: %s", msg.message)
         
         def unsubscribe_cb(
@@ -229,27 +230,27 @@ class ApiAgent:
                         await self.chat.send_move_cmd(
                             cmd, srcname=chat_ext.CHAT_MEMBER_ASSITANT, timestamp=time.time(),
                         )
-                        if cmd in ["A", "B", "C", "D", "E", "F", "G", "H"]:
+                        if cmd in [Command.FORWARD, Command.RIGHT_FRONT, Command.RIGHT, Command.RIGHT_BACK, Command.BACK, Command.LEFT_BACK, Command.LEFT, Command.LEFT_FRONT]:
                             self.current_move_time = time.time()
-                        if cmd in ["B", "H"]:
-                            logging.info("Forward turn ----------FFFFF")
+                        if cmd in [Command.RIGHT_FRONT, Command.LEFT_FRONT]:
+                            logging.info("Forward turn ----------")
                             await asyncio.sleep(0.2)
                             await self.chat.send_move_cmd(
-                                "A", srcname=chat_ext.CHAT_MEMBER_ASSITANT, timestamp=time.time(),
+                                Command.FORWARD, srcname=chat_ext.CHAT_MEMBER_ASSITANT, timestamp=time.time(),
                             )
                             await asyncio.sleep(0.3)
-                        elif cmd in ["D", "F"]:
-                            logging.info("Back turn ----------BBBBB")
+                        elif cmd in [Command.LEFT_BACK, Command.RIGHT_BACK]:
+                            logging.info("Back turn ----------")
                             await asyncio.sleep(0.2)
                             await self.chat.send_move_cmd(
-                                "E", srcname=chat_ext.CHAT_MEMBER_ASSITANT, timestamp=time.time(),
+                                Command.BACK, srcname=chat_ext.CHAT_MEMBER_ASSITANT, timestamp=time.time(),
                             )
                             await asyncio.sleep(0.3)
                         else:
                             await asyncio.sleep(0.5)
 
                         await self.chat.send_move_cmd(
-                            "Z", srcname=chat_ext.CHAT_MEMBER_ASSITANT, timestamp=time.time(),
+                            Command.STOP, srcname=chat_ext.CHAT_MEMBER_ASSITANT, timestamp=time.time(),
                         )
 
                 detected_names = [self.detector.names[int(i)] for i in self.results[0].boxes.cls]
@@ -273,7 +274,8 @@ class ApiAgent:
         frame_interval_normal = config.agents.yolo_frame_interval
         self.video_streaming = True
 
-        async for frame in video_stream:
+        async for event in video_stream:
+            frame = event.frame
             current_time = time.time()
             if (current_time - last_catch_time) < frame_interval_normal or self.detecting:
                 logging.debug("video frame skipped ______ ")
@@ -321,20 +323,37 @@ class ApiAgent:
             plt.pause(0.001)
 
 
+    async def speakStatusChanged(self, event: agents.vad.VADEventType) -> None:
+        logging.info("speech status changed: %s", event)
+        cmd : str = None
+        if event == agents.vad.VADEventType.START_SPEAKING:
+            cmd = Command.START_SPEAK
+        elif event == agents.vad.VADEventType.END_SPEAKING:
+            cmd = Command.STOP_SPEAK
+        else:
+            return
+        await self.chat.send_move_cmd(
+            cmd, srcname=chat_ext.CHAT_MEMBER_ASSITANT, timestamp=time.time(),
+        )
+        logging.info("sent move(speak) command: %s", cmd)
+
 
     async def audio_track_worker(self, track: rtc.Track):
         audio_stream = rtc.AudioStream(track)
         max_buffered_speech = config.agents.max_buffered_speech
-        vad_stream = self.vad.stream(min_silence_duration=config.agents.min_silence_duration, min_speaking_duration=0.3, max_buffered_speech=max_buffered_speech, threshold=0.5)
+        vad_stream = self.vad.stream(min_silence_duration=config.agents.min_silence_duration, min_speaking_duration=config.agents.min_speaking_duration, 
+                                     max_buffered_speech=max_buffered_speech, threshold=config.agents.vad_threshold, newEventCallback=self.speakStatusChanged)
         stt = agents.stt.StreamAdapter(self.stt_model, vad_stream)
         stt_stream = stt.stream()
         self.ctx.create_task(self.stt_worker(stt_stream))
 
         logging.info("starting audio track worker")
         frame_count = 0
-        async for frame in audio_stream:
-            newFrame = frame.remix_and_resample(16000, 1)
-            stt_stream.push_frame(newFrame)
+        async for event in audio_stream:
+            frame = event.frame
+            if frame.sample_rate != 16000:
+                frame = frame.remix_and_resample(16000, 1)
+            stt_stream.push_frame(frame)
             frame_count += 1
             if frame_count % 500 == 0:
                 logger.info("audio track worker received frame")
@@ -391,6 +410,7 @@ if __name__ == "__main__":
     # logging.basicConfig(level=logging.INFO)
 
     logger.info("starting api agent")
+    logger.info('_____________ %s', Command.ACCELERATE)
 
     async def job_request_cb(job_request: agents.JobRequest):
         logger.info("Accepting job for api")

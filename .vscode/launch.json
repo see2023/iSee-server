@@ -3,7 +3,7 @@
 	"configurations": [
 		{
 			"name": "Python: Common",
-			"type": "python",
+			"type": "debugpy",
 			"request": "launch",
 			"program": "${file}",
 			"console": "integratedTerminal",
@@ -12,7 +12,7 @@
 		},
 		{
 			"name": "Agent start",
-			"type": "python",
+			"type": "debugpy",
 			"request": "launch",
 			"program": "${file}",
 			"console": "integratedTerminal",

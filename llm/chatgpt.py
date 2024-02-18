@@ -32,6 +32,7 @@ class ChatGPT(LLMBase):
         if not history or len(history) == 0:
             logging.info("No history found for user_id: %s", user_id)
             yield ""
+            return
         try:
             chat_stream = await asyncio.wait_for(
                 self._client.chat.completions.create(
