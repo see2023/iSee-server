@@ -150,13 +150,14 @@ class STT(stt.STT):
         wsUrl = self.wsParam.create_url()
         
         try:
-            async with websockets.connect(wsUrl) as websocket:
+            async with websockets.connect(wsUrl, close_timeout=0.005) as websocket:
                 await self.send_audio(websocket, buffer)
                 message = await websocket.recv()
                 result = self.parse_message(message)
                 logging.info("xf recognize result:%s" % result)
                 now = time.time()
                 speechData = stt.SpeechData(language=language or "zh", text=result, start_time=now-duration, end_time=now)
+                await websocket.close()
                 return stt.SpeechEvent(is_final=True, alternatives=[speechData])
         except Exception as e:
             logging.error("xf recognize exception:", e)

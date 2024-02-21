@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 from dashscope import Generation, MultiModalConversation
 from llm.llm_base import LLMBase, Message, MessageRole,VisualLLMBase
-from db.redis_cli import get_redis_client, REDIS_CHAT_KEY, write_chat_to_redis, get_detected_names_from_redis
+from db.redis_cli import REDIS_CHAT_KEY, write_chat_to_redis
 
 
 

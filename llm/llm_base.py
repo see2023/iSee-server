@@ -168,7 +168,7 @@ class LLMBase:
         stream_key = REDIS_CHAT_KEY+user_id
         srcname = CHAT_MEMBER_APP if role == MessageRole.user else CHAT_MEMBER_ASSITANT
         # try:
-        write_chat_to_redis(stream_key, text=content, timestamp=time.time(), srcname=srcname)
+        await write_chat_to_redis(stream_key, text=content, timestamp=time.time(), srcname=srcname)
         logging.debug(f"Saved message to redis: {content}")
         # except Exception as e:
         #     logging.error(f"Failed to save message to redis: {e}")  

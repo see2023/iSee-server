@@ -119,9 +119,9 @@ class ApiAgent:
                     self.ctx.create_task(self.audio_track_worker(track))
                 if not self.remoteId:
                     self.remoteId = participant.identity
-                    logging.info("================================== redis xtrim key: %s", self.stream_key)
                     async def set_user_info(user_id: str):
                         self.stream_key = REDIS_CHAT_KEY + user_id
+                        logging.info("================================== redis xtrim key: %s", self.stream_key)
                         await self.redis.xtrim(self.stream_key, 10000)
                         # set last user
                         await self.redis.set(REDIS_PREFIX+ "last_user", user_id)
