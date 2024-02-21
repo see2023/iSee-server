@@ -30,15 +30,11 @@ class MessageConsumer():
         super().__init__()
         self._user = user
         self._callback = callback
-        self._redis_client: redis.Redis = get_redis_client()
+        self._redis_client: redis.asyncio.Redis = get_redis_client()
         self._room: rtc.Room = rtc.Room()
         self._rtc_api_url = os.getenv("LIVEKIT_API_URL")
         self._rtc_url = os.getenv("LIVEKIT_URL")
         self._chat = None
-        if not self._user:
-            self._user = self._redis_client.get(REDIS_PREFIX+ "last_user")
-            if self._user:
-                logging.info("Got last user from redis: " + self._user)
         self.llm_engine: LLMBase = get_llm()
         self.vlm: VisualLLMBase = get_vl_LLM()
     
@@ -49,8 +45,12 @@ class MessageConsumer():
             self._callback = callback
     
     async def join_room(self) ->bool:
+        if not self._user:
+            self._user = await self._redis_client.get(REDIS_PREFIX+ "last_user")
+            if self._user:
+                logging.info("Got last user from redis: " + self._user)
         logging.info("starting connection to livekit...")
-        token = get_token(os.getenv("API_USER"))
+        token = await get_token(os.getenv("API_USER"))
         def is_app_user(user_id: str) -> bool:
             if not user_id:
                 return False
@@ -162,7 +162,7 @@ class MessageConsumer():
         logging.info("Start consuming messages...")
         redis_client = get_redis_client()
         pubsub = redis_client.pubsub()
-        pubsub.subscribe(REDIS_MQ_KEY)
+        await pubsub.subscribe(REDIS_MQ_KEY)
         while not quit_flag:
             await asyncio.sleep(0.001)
             if not self._user:
@@ -178,7 +178,7 @@ class MessageConsumer():
             #     logging.info("Received message from app: " + msg_text + ", start response...")
             # xread loss message sometimes, change to pubsub
             try:
-                message = pubsub.get_message(timeout=1)
+                message = await pubsub.get_message(timeout=1)
                 if message and message['type'] =='message':
                     msg_text = message['data']
                     logging.info("Received message from MQ: " + msg_text + ", start response...")

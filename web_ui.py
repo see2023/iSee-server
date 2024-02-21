@@ -39,7 +39,7 @@ async def join_room(ws_url, token):
 
 # 创建一个gradio接口，使用文本输入组件来输入ws_url和token，使用音频和图像输出组件来展示对方的音视频
 async def main():
-    data = common_post(url_prefix + '/api/v1/live/getToken', test_user, 'getToken')
+    data = await common_post(url_prefix + '/api/v1/live/getToken', test_user, 'getToken')
     if data is not None:
         token = data['text']
     else:

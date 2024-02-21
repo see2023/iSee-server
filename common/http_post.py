@@ -1,5 +1,4 @@
 from auth import gen_post_request
-import requests
 import aiohttp
 from typing import Optional
 import os
@@ -10,19 +9,20 @@ from common.config import config
 
 
 
-def common_post(url, user, text):
-    post_data = gen_post_request(user, text)
-    response = requests.post(url, json=post_data)
-    if response.status_code != 200:
-        print('http post failed, url: ', url) 
-        return None
-    else:
-        return response.json()
+async def common_post(url, user, text):
+    post_data = await gen_post_request(user, text)
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=post_data) as response:
+            if response.status != 200:
+                print('http post failed, url: ', url) 
+                return None
+            else:
+                return await response.json()
 
-def get_token(user):
+async def get_token(user):
     try:
         url = os.getenv("LIVEKIT_API_URL") + '/api/v1/live/getToken'
-        res =  common_post(url, user, '')
+        res =  await common_post(url, user, '')
         if not res or not res['status']:
             return None
         return res['text']

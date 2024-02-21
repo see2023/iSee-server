@@ -137,7 +137,7 @@ class QwenVisualLLM(VisualLLMBase):
             response = MultiModalConversation.call(model=model, messages=messages)
             if response.status_code == HTTPStatus.OK:
                 content = response.output.choices[0].message.content[0]['text']
-                write_chat_to_redis(stream_key, text=content, timestamp=time.time(), srcname=CHAT_MEMBER_ASSITANT)
+                await write_chat_to_redis(stream_key, text=content, timestamp=time.time(), srcname=CHAT_MEMBER_ASSITANT)
                 logging.debug(f"Saved  vl message to redis: {content}")
                 return content
             else:

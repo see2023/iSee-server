@@ -1,5 +1,4 @@
 from flask import Flask, request, jsonify, make_response
-from redis import Redis
 import hashlib
 import logging
 from datetime import datetime
@@ -9,14 +8,14 @@ logger = logging.getLogger()
 redis_client = get_redis_client()
 
 def authenticate_request(func):
-    def wrapper(*args, **kwargs):
+    async def wrapper(*args, **kwargs):
         data = request.get_json()
         if not data or 'user' not in data or 'timestamp' not in data or 'text' not in data or 'md5hash' not in data:
             logger.error('Invalid request')
             response = {'status': False, 'text': 'Invalid request'}
             return make_response(jsonify(response), 400)
 
-        user_key = redis_client.get(REDIS_PREFIX + data['user'])
+        user_key = await redis_client.get(REDIS_PREFIX + data['user'])
         if not user_key:
             logger.error(f"User not found: {data['user']}")
             response = {'status': False, 'text': 'user not found'}
@@ -35,9 +34,9 @@ def authenticate_request(func):
     wrapper.__name__ = func.__name__
     return wrapper
 
-def gen_md5hash(user, timestamp, text):
+async def gen_md5hash(user, timestamp, text):
     # 获取存储于Redis的密钥
-    user_key = redis_client.get(REDIS_PREFIX + user)
+    user_key = await redis_client.get(REDIS_PREFIX + user)
     if not user_key:
         logger.error(f"User not found: {user}")
         return ''
@@ -47,9 +46,9 @@ def gen_md5hash(user, timestamp, text):
     md5hash = hashlib.md5(raw_string).hexdigest()
     return md5hash
 
-def gen_post_request(user, text):
+async def gen_post_request(user, text):
     timestamp = datetime.now().timestamp()
-    md5hash = gen_md5hash(user, timestamp, text)
+    md5hash = await gen_md5hash(user, timestamp, text)
     if not md5hash:
         return None
 

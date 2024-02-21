@@ -119,11 +119,14 @@ class ApiAgent:
                     self.ctx.create_task(self.audio_track_worker(track))
                 if not self.remoteId:
                     self.remoteId = participant.identity
-                    self.stream_key = REDIS_CHAT_KEY + self.remoteId
-                    res = self.redis.xtrim(self.stream_key, 10000)
-                    # set last user
-                    self.redis.set(REDIS_PREFIX+ "last_user", self.remoteId)
-                    logging.info("================================== redis xtrim key: %s, res: %s", self.stream_key, res)
+                    logging.info("================================== redis xtrim key: %s", self.stream_key)
+                    async def set_user_info(user_id: str):
+                        self.stream_key = REDIS_CHAT_KEY + user_id
+                        await self.redis.xtrim(self.stream_key, 10000)
+                        # set last user
+                        await self.redis.set(REDIS_PREFIX+ "last_user", user_id)
+                    loop = asyncio.get_event_loop()
+                    loop.create_task(set_user_info(self.remoteId))
             elif track.kind == rtc.TrackKind.KIND_VIDEO:
                 if config.agents.enable_video:
                     self.ctx.create_task(self.video_track_worker(track))
@@ -259,7 +262,7 @@ class ApiAgent:
                 if len(detected_names) > 0:
                     detected_names_str = ", ".join(detected_names)
                     logging.info("detected objects: %s", detected_names)
-                    write_detected_names_to_redis(detected_names_str)
+                    await write_detected_names_to_redis(detected_names_str)
                     self.draw_results(detecting_img)
 
                 self.detecting = False
@@ -398,8 +401,8 @@ class ApiAgent:
                 message=speech.text, srcname=chat_ext.CHAT_MEMBER_APP, timestamp=speech.start_time,
                 duration=duration, language=speech.language
             )
-            write_chat_to_redis(self.stream_key, text=speech.text, timestamp=speech.start_time, duration=duration, language=speech.language, srcname=chat_ext.CHAT_MEMBER_APP)
-            write_mq_to_redis(speech.text)
+            await write_chat_to_redis(self.stream_key, text=speech.text, timestamp=speech.start_time, duration=duration, language=speech.language, srcname=chat_ext.CHAT_MEMBER_APP)
+            await write_mq_to_redis(speech.text)
 
             await asyncio.sleep(0.001)
         await stt_stream.aclose()

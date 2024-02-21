@@ -36,9 +36,9 @@ class Message:
     def get_content_length(self) -> int:
         return len(self.content)
     @classmethod
-    def get_system_prompt(self, prompt_type="app") -> str:
+    async def get_system_prompt(self, prompt_type="app") -> str:
         if prompt_type in DEFAULT_SYSTEM_PROMPTS:
-            detected_names = get_detected_names_from_redis()
+            detected_names = await get_detected_names_from_redis()
             return DEFAULT_SYSTEM_PROMPTS[prompt_type] % (detected_names, config.llm.location,  get_lunar())
         else:
             return 'You are a helpful assistant.'
@@ -112,11 +112,11 @@ class LLMBase:
 
     async def build_history_from_redis(self, user_id: str) -> List[Message]:
         history: List[dict] = []
-        system_message = Message(MessageRole.system, Message.get_system_prompt())
+        system_message = Message(MessageRole.system, await Message.get_system_prompt())
         total_length = system_message.get_content_length()
         stream_key = REDIS_CHAT_KEY+user_id
         start_time = int(time.time() - 1800)
-        messages = self._redis_client.xrevrange(stream_key, min='-', max='+', count=self._history_count)
+        messages = await self._redis_client.xrevrange(stream_key, min='-', max='+', count=self._history_count)
         if messages:
             last_msg_type = ''
             first_msg_type = ''
@@ -176,16 +176,16 @@ class LLMBase:
 
 class VisualLLMBase:
     def __init__(self, message_capacity:int=6000, history_count: int=20):
-        self._redis_client: redis.Redis = get_redis_client()
+        self._redis_client: redis.asyncio.Redis = get_redis_client()
         self._message_capacity: int = int(message_capacity)
         self._history_count: int = history_count
-        self._system_prompt = Message.get_system_prompt()
     
     async def get_user_history(self, user_id: str) -> List[str]:
         try:
+            self._system_prompt = await Message.get_system_prompt()
             stream_key = REDIS_CHAT_KEY+user_id
             start_time = int(time.time() - 1800)
-            messages = self._redis_client.xrevrange(stream_key, min='-', max='+', count=self._history_count)
+            messages = await self._redis_client.xrevrange(stream_key, min='-', max='+', count=self._history_count)
             questions: List[str] = []
             if messages:
                 for message in messages:
