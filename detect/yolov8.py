@@ -17,12 +17,7 @@ class YoloV8Detector:
     @classmethod
     def VidioFrame_to_Image(cls, frame: rtc.VideoFrame) -> Image:
         try:
-            argb_frame = rtc.ArgbFrame.create(
-                format=rtc.VideoFormatType.FORMAT_RGBA,
-                width=frame.buffer.width,
-                height=frame.buffer.height,
-            )
-            frame.buffer.to_argb(dst=argb_frame)
+            argb_frame =  frame.convert(rtc.VideoBufferType.RGBA)
             image = Image.frombytes(
                 "RGBA", (argb_frame.width, argb_frame.height), argb_frame.data.tobytes()
             ).convert("RGB")

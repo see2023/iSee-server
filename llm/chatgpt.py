@@ -12,6 +12,7 @@ import openai
 from dataclasses import dataclass
 from typing import AsyncIterable, List, Optional
 from llm.llm_base import LLMBase, Message, MessageRole
+from common.config import config
 
 class ChatGPT(LLMBase):
     """OpenAI ChatGPT Plugin"""
@@ -25,21 +26,18 @@ class ChatGPT(LLMBase):
         super().__init__("OPENAI_API_KEY", message_capacity=message_capacity)
         self._client = openai.AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
-    async def generate_text_streamed(self, user_id: str, model: str = "gpt-3.5-turbo-0125", addtional_user_message: Message = None) -> AsyncIterable[str]:
-        history = await self.build_history_from_redis(user_id)
-        if addtional_user_message is not None:
-            history.append(addtional_user_message.to_dict())
-        if not history or len(history) == 0:
-            logging.info("No history found for user_id: %s", user_id)
+    async def generate_text_streamed(self, user_id: str, model: str = "gpt-3.5-turbo-0125", addtional_user_message: Message = None, use_redis_history: bool = True) -> AsyncIterable[str]:
+        if not await self.prepare(user_id, model, addtional_user_message, use_redis_history):
             yield ""
             return
         try:
             chat_stream = await asyncio.wait_for(
                 self._client.chat.completions.create(
-                    model=model,
+                    model=self._model,
                     n=1,
                     stream=True,
-                    messages=history,
+                    messages=self._history,
+                    functions=self._tools.get_functions_openai_style() if config.llm.enable_openai_functions else None,
                 ),
                 self._response_timeout,
             )
@@ -50,6 +48,8 @@ class ChatGPT(LLMBase):
         self._producing_response = True
         full_content: str = ""
         one_sentence: str = ''
+        self._fn_name = ''
+        self._fn_args = ''
 
         while True:
             try:
@@ -63,7 +63,18 @@ class ChatGPT(LLMBase):
 
             if chunk is None:
                 break
-            content = chunk.choices[0].delta.content
+            delta = chunk.choices[0].delta
+            content = ''
+            if config.llm.enable_openai_functions and delta.content is None and delta.function_call is not None:
+                if delta.function_call.name is not None:
+                    content = delta.function_call.name
+                    self._fn_name += content
+                if delta.function_call.arguments is not None:
+                    content += delta.function_call.arguments
+                    self._fn_args += content
+            else:
+                content = delta.content
+            # logging.debug("chatgpt got chunk: chunk.choices: %s", chunk.choices)
 
             if self._needs_interrupt:
                 self._needs_interrupt = False
@@ -85,9 +96,11 @@ class ChatGPT(LLMBase):
             logging.info("Last sentence from chatgpt: %s", one_sentence)
 
         logging.debug("chatgpt got full content: %s", full_content)
-        await self.save_message_to_redis(user_id, full_content)
+        if use_redis_history:
+            await self.save_message_to_redis(self._user, full_content)
         self._producing_response = False
         self._needs_interrupt = False
+        self._interactions_count += 1
 
 async def main():
     chatgpt = ChatGPT()
@@ -96,9 +109,12 @@ async def main():
         format='%(asctime)s - %(levelname)s [in %(pathname)s:%(lineno)d] - %(message)s',
     )
     logging.info("Starting chatgpt")
+    model = "gpt-4-0125-preview"
     model = "gpt-3.5-turbo-0125"
-    # model = 'gpt-4-0125-preview'
-    async for message in chatgpt.generate_text_streamed("user1", model, Message(content="Hello, how are you?", role=MessageRole.user)):
+    query = "从2加到10等于几？"
+    query = "请帮我写一首诗, 下雪了啊"
+    query = "现在外面是几度？下雨了吗？"
+    async for message in chatgpt.generate_text_streamed("user1", model, addtional_user_message=Message(content=query, role=MessageRole.user), use_redis_history=False):
         print(message)
 
 if __name__ == '__main__':

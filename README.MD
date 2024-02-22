@@ -32,11 +32,11 @@ python3 app.py
 	* 识别语音
 	* 通过视觉模型解析场景
 ```
-python agents/agent.py start
+python agents/live_agent.py start
 ```
 
 * LLM
 	* 接受Agent信息，通过LLM 接口与用户交互
 ```
-python agents/msg_consume.py
+python agents/llm_agent.py
 ```

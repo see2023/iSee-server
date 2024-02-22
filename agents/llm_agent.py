@@ -10,6 +10,7 @@ import redis
 from db.redis_cli import get_redis_client, REDIS_CHAT_KEY, REDIS_PREFIX, REDIS_MQ_KEY
 from agents.chat_ext import CHAT_MEMBER_APP, CHAT_MEMBER_ASSITANT,ChatExtManager, ChatExtMessage
 from llm import get_llm, get_vl_LLM, LLMBase, VisualLLMBase
+from llm.llm_tools import Tools, ToolNames, ToolActions
 from typing import Callable
 from livekit import rtc
 from common.http_post import get_token
@@ -114,6 +115,21 @@ class MessageConsumer():
         await self._chat.send_message(
             message=msg, srcname=CHAT_MEMBER_ASSITANT, timestamp=time.time(),
         )
+    
+    async def handle_action(self, cmd:str, args:list = None):
+        if cmd == ToolActions.VLLM:
+            logging.info("Received VLLM command, start checking picture...")
+            await self.clear_picture_dir()
+            await self.send_to_app(config.llm.vl_cmd_catch_pic)
+            # 等待10秒，循环 check_new_picture
+            finished = False
+            for i in range(100):
+                if await self.check_new_picture():
+                    finished = True
+                    break
+                await asyncio.sleep(0.1)
+            if not finished:
+                logging.error("Failed to catch picture in 10 seconds, try again later")
 
 
     ## 订阅 redis stream: REDIS_CHAT_KEY，接收消息并处理
@@ -127,14 +143,21 @@ class MessageConsumer():
             await asyncio.sleep(1)
         await self._task
 
-    async def check_new_picture(self, dir_path: str = "tmp"):
+    async def clear_picture_dir(self, dir_path: str = "tmp"):
+        if os.path.exists(dir_path):
+            files = os.listdir(dir_path)
+            for f in files:
+                os.remove(os.path.join(dir_path, f))
+                logging.info("Deleted old picture: " + f)
+
+    async def check_new_picture(self, dir_path: str = "tmp") -> bool:
         if not os.path.exists(dir_path):
-            return
+            return False
         # 找出最新的 .jpg 文件
         files = os.listdir(dir_path)
         files = [f for f in files if f.endswith(".jpg")]
         if not files:
-            return
+            return False
         latest_file = files[-1]
         # 删除其他文件
         for f in files:
@@ -156,6 +179,7 @@ class MessageConsumer():
             
         os.remove(latest_file)
         logging.info("Deleted picture file: " + latest_file)
+        return True
 
 
     async def process_app_msg(self):
@@ -195,12 +219,19 @@ class MessageConsumer():
                     logging.info("LLM is responsing, skip this message: " + msg_text)
                     continue
                 self.llm_engine.set_responsing_text(msg_text)
+                self.llm_engine.clear_history()
                 try:
                     async for output in self.llm_engine.generate_text_streamed(self._user, config.llm.model):
                         if output:
+                            if config.llm.enable_custom_functions:
+                                output = self.llm_engine.parse_custom_function(output)
+                                if output is None or len(output) == 0:
+                                    continue
                             await self.send_to_app(output)
                             if self._callback:
                                 self._callback(output)
+                    if config.llm.enable_custom_functions:
+                        await self.llm_engine.handle_custom_function_output(output_callback_func=self.send_to_app, cmd_callback_func=self.handle_action)
                 except Exception as e:
                     logging.error(f"Error occurred while handling message: {e}")
             except asyncio.TimeoutError:

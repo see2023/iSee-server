@@ -68,13 +68,23 @@ class LLMConfig:
             location: str,
             vl_engine: str,
             vl_model: str,
-
+            enable_openai_functions: bool,
+            enable_custom_functions: bool,
+            vl_cmd_catch_pic: str,
+            chat_history_count: int,
+            chat_history_time_limit: int,
     ):
         self.engine = engine.lower()
         self.model = model.lower()
         self.location = location
         self.vl_engine = vl_engine.lower()
         self.vl_model = vl_model.lower()
+        self.enable_openai_functions = enable_openai_functions
+        self.enable_custom_functions = enable_custom_functions
+        self.vl_cmd_catch_pic = vl_cmd_catch_pic
+        self.chat_history_count = chat_history_count
+        self.chat_history_time_limit = chat_history_time_limit
+
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, any]):

@@ -18,11 +18,11 @@ agents:
   max_buffered_speech: 15
   enable_audio: True
   enable_video: True
-  vision_lang_interval: 60
-  send_vl_result: False
-  min_silence_duration: 3
-  min_speaking_duration: 0.3
-  vad_threshold: 0.3
+  vision_lang_interval: 0
+  send_vl_result: True
+  min_silence_duration: 1
+  min_speaking_duration: 1
+  vad_threshold: 0.5
 
 llm:
   engine: "QWEN"  # CHATGPT QWEN
@@ -30,6 +30,11 @@ llm:
   location: "cn"
   vl_engine: "qwen"
   vl_model: "qwen-vl-plus" # qwen-vl-plus qwen-vl-max
+  vl_cmd_catch_pic: "开始拍照"
+  enable_openai_functions: False
+  enable_custom_functions: True
+  chat_history_count: 20
+  chat_history_time_limit: 600
 
 api:
   www_root: "/var/www/html/"

@@ -12,6 +12,7 @@ load_dotenv()
 from dashscope import Generation, MultiModalConversation
 from llm.llm_base import LLMBase, Message, MessageRole,VisualLLMBase
 from db.redis_cli import REDIS_CHAT_KEY, write_chat_to_redis
+from common.config import config
 
 
 
@@ -19,17 +20,17 @@ class Qwen(LLMBase):
     def __init__(self):
         super().__init__("DASHSCOPE_API_KEY")
 
-    async def generate_text_streamed(self, user_id: str, model: str = Generation.Models.qwen_max, addtional_user_message: Message = None) -> AsyncIterable[str]:
-        history = await self.build_history_from_redis(user_id)
-        if addtional_user_message is not None:
-            history.append(addtional_user_message.to_dict())
-        if not history or len(history) == 0:
-            logging.info("No history found for user_id: %s", user_id)
+    async def generate_text_streamed(self, user_id: str, model: str = Generation.Models.qwen_max, addtional_user_message: Message = None, use_redis_history: bool = True) -> AsyncIterable[str]:
+        if config.llm.enable_openai_functions:
+            yield "Sorry, OpenAI functions are not supported for Qwen"
+            logging.error("OpenAI functions are not supported for Qwen")
+            return
+        if not await self.prepare(user_id, model, addtional_user_message, use_redis_history):
             yield ""
             return
         responses = Generation.call(
-            model,
-            messages=history,
+            self._model,
+            messages=self._history,
             result_format='message',  # set the result to be "message" format.
             stream=True,
             incremental_output=True  # get streaming output incrementally
@@ -60,13 +61,13 @@ class Qwen(LLMBase):
                     ))
                 if self._needs_interrupt:
                     responses.close()
-                    logging.info("Interrupting qwen generation for user_id: %s", user_id)
+                    logging.info("Interrupting qwen generation for user_id: %s", self._user)
                     break
             except TimeoutError:
-                logging.info("qwen timeout for user_id: %s", user_id)
+                logging.info("qwen timeout for user_id: %s", self._user)
                 break
             except asyncio.CancelledError:
-                logging.info("qwen cancelled for user_id: %s", user_id)
+                logging.info("qwen cancelled for user_id: %s", self._user)
                 break
 
         if one_sentence != '':
@@ -74,9 +75,11 @@ class Qwen(LLMBase):
             logging.info("Last sentence from Qwen: %s", one_sentence)
 
         logging.debug("qwen got full content: %s", full_content)
-        await self.save_message_to_redis(user_id, full_content)
+        if use_redis_history:
+            await self.save_message_to_redis(self._user, full_content)
         self._needs_interrupt = False
         self._producing_response = False
+        self._interactions_count += 1
 
 
 class QwenVisualLLM(VisualLLMBase):
@@ -98,10 +101,10 @@ class QwenVisualLLM(VisualLLMBase):
         }"""
         # 遍历files，将图片路径加入content，生成上述结构
         question: str = ""
-        if user_questions_str is not None:
-            question = "之前我的问题：["+user_questions_str+"]. 你在描述图片时，可以参考。 "
-        # question += "你看到了什么？ 跟我聊聊吧！还是你要问我问题呢？"
-        question += "请描述你在图片里看到的内容。"
+        if user_questions_str is None:
+            question += "请描述你在图片里看到的内容。"
+        else:
+            question += user_questions_str
         msg = {
             'role': 'user',
             'content': []
@@ -128,8 +131,8 @@ class QwenVisualLLM(VisualLLMBase):
                 {
                     'role': 'system',
                     'content': [{
-                        'text': self._system_prompt + """ 请不要以第三人称的口吻描述图片，而是用第一人称的口吻描述你看到的场景。
-                        描述的方式：'这件衣服好漂亮，蓝色的格子我也喜欢。' '"""
+                        'text': self._system_prompt + """ 请不要以第三人称的口吻描述图片，而是用第一人称的口吻描述你看到的场景，或者回答用户的问题。
+                        比如：我喜欢这件衣服，蓝白相间的格子简单又大气。"""
                     }]
                 }, 
                 user_message]
@@ -158,9 +161,19 @@ async def main():
         format='%(asctime)s - %(levelname)s [in %(pathname)s:%(lineno)d] - %(message)s',
     )
     logging.info("Start testing qwen generation")
-    async for output in qwen.generate_text_streamed("user1",  model=Generation.Models.qwen_max,
-                                                    addtional_user_message=Message(content="你好，今天好开心啊！", role=MessageRole.user)):
-        print(output)
+    query = "请帮我写一首诗, 下雪了啊"
+    query = "现在外面是几度？下雨了吗？"
+    query = "你看看我画的好看吗？"
+    query = "从2加到10等于几？"
+    user = "user1"
+    model = Generation.Models.qwen_max
+    async for output in qwen.generate_text_streamed(user,  model=model,
+                                                    addtional_user_message=Message(content=query, role=MessageRole.user), use_redis_history=False):
+        output_new =qwen.parse_custom_function(output)
+        if output_new is not None and output_new!= "":
+            logging.info(f"Qwen generated output after parse_custom_function: {output_new}")
+    await qwen.handle_custom_function_output()
+
 
 
 if __name__ == '__main__':

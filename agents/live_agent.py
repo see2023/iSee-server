@@ -73,10 +73,10 @@ def get_model():
     model_manager = ModelManager.get_instance()
     return model_manager.stt_model, model_manager.detector
 
-class ApiAgent:
+class LiveAgent:
     @classmethod
     async def create(cls, ctx: agents.JobContext):
-        agent = ApiAgent(ctx)
+        agent = LiveAgent(ctx)
         await agent.start()
 
     def __init__(self, ctx: agents.JobContext):
@@ -87,7 +87,7 @@ class ApiAgent:
         self.motion_control = SimpleControl(self.detector)
 
         self.vad = VAD()
-        logging.info("API agent created")
+        logging.info("Live agent created")
 
         self.ctx = ctx
         self.chat = chat_ext.ChatExtManager(ctx.room)
@@ -100,6 +100,7 @@ class ApiAgent:
         self.current_move_time: float = 0
         self.current_detected_names = []
         self.detecting: bool = False
+        self.start_catch_pic = False
         self.results = []
 
         self.show_detected_results = config.agents.show_detected_results
@@ -131,11 +132,15 @@ class ApiAgent:
                 if config.agents.enable_video:
                     self.ctx.create_task(self.video_track_worker(track))
                     self.ctx.create_task(self.video_detect_worker())
-                    if config.agents.vision_lang_interval > 0:
-                        self.ctx.create_task(self.vision_lang_worker())
+                    self.ctx.create_task(self.vision_lang_worker())
 
-        def process_chat(msg: chat_ext.ChatExtMessage):
+        async def process_chat(msg: chat_ext.ChatExtMessage):
             logging.info("received chat message: %s", msg.message)
+            if msg.message == config.llm.vl_cmd_catch_pic:
+                # 等待提示音
+                await asyncio.sleep(3)
+                self.start_catch_pic = True
+                logging.info("start catching picture")
         
         def unsubscribe_cb(
             track: rtc.Track,
@@ -149,7 +154,9 @@ class ApiAgent:
 
         self.ctx.room.on("track_subscribed", subscribe_cb)
         self.ctx.room.on("track_unsubscribed", lambda *args: logging.info("unsubscribed")) # todo, handle member disconnect
-        self.chat.on("message_received", process_chat)
+        def on_message(msg: chat_ext.ChatExtMessage):
+            asyncio.ensure_future(process_chat(msg))
+        self.chat.on("message_received", on_message)
 
     async def send_to_app(self, msg: str):
         logging.info("sending message to app: %s", msg)
@@ -165,7 +172,7 @@ class ApiAgent:
         # create_task is used to run coroutines in the background
         self.ctx.create_task(
             self.chat.send_message(
-                message="Welcome to the api agent! Just peak to me."
+                message="Welcome to the live agent! Just peak to me."
             )
         )
 
@@ -195,14 +202,19 @@ class ApiAgent:
                 await asyncio.sleep(1)
 
     async def check_vision_lang(self, detected_names, detecting_img: Image):
+        if detecting_img.width < 300 or detecting_img.height < 300:
+            return
+        if self.start_catch_pic:
+            self.start_catch_pic = False
+            self.currrent_vl_img = detecting_img
+            logging.info("catching picture ok")
+            return
         now = time.time()
-        if now - self.currrent_vl_time < config.agents.vision_lang_interval:
+        if now - self.currrent_vl_time < config.agents.vision_lang_interval or config.agents.vision_lang_interval <= 0:
             return
         if len(detected_names) == 0:
             return
         if detected_names == self.current_detected_names and self.current_move_time < now - config.agents.vision_lang_interval:
-            return
-        if detecting_img.width < 300 or detecting_img.height < 300:
             return
         logging.info("sending to vision lang model")
         self.currrent_vl_img = detecting_img
@@ -217,7 +229,9 @@ class ApiAgent:
                 self.detecting = True
                 detecting_img = self.currrent_img
                 self.currrent_img = None
-                self.results = self.detector.detect(detecting_img)
+                loop = asyncio.get_event_loop()
+                self.results = await loop.run_in_executor(None, self.detector.detect, detecting_img)
+
                 if self.catch_follow_pos:
                     start_rt, rt_msg = self.motion_control.start_follow(self.results)
                     logging.info("received motion command, starting motion control rt_msg: %s", rt_msg)
@@ -278,13 +292,13 @@ class ApiAgent:
         self.video_streaming = True
 
         async for event in video_stream:
-            frame = event.frame
+            frame: rtc.VideoFrame = event.frame
             current_time = time.time()
             if (current_time - last_catch_time) < frame_interval_normal or self.detecting:
                 logging.debug("video frame skipped ______ ")
                 continue
             last_catch_time = current_time
-            logging.debug("received video frame: %d x %d", frame.buffer.width, frame.buffer.height)
+            logging.debug("received video frame: %d x %d", frame.width, frame.height)
             try:
                 img = YoloV8Detector.VidioFrame_to_Image(frame)
                 if not img:
@@ -412,13 +426,13 @@ class ApiAgent:
 if __name__ == "__main__":
     # logging.basicConfig(level=logging.INFO)
 
-    logger.info("starting api agent")
+    logger.info("starting live agent")
     logger.info('_____________ %s', Command.ACCELERATE)
 
     async def job_request_cb(job_request: agents.JobRequest):
-        logger.info("Accepting job for api")
+        logger.info("Accepting job for live")
         await job_request.accept(
-            ApiAgent.create,
+            LiveAgent.create,
             identity="api_agent",
             name="api_agent",
             # subscribe to all audio tracks automatically
