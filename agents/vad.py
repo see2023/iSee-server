@@ -24,6 +24,7 @@ from livekit import rtc, agents
 import torch
 import numpy as np
 from collections import deque
+from common.config import config
 
 
 class VAD(agents.vad.VAD):
@@ -110,6 +111,9 @@ class VADStream(agents.vad.VADStream):
         self._main_task = asyncio.create_task(self._run())
         self._inference_frame_count = 4
         self._last_event_type = None
+        self._speech_probs: List[float] = []
+        self._asume_speech_min_prob = config.agents.vad_asume_speech_min_prob
+        self._asume_speech_max_count = config.agents.vad_asume_speech_max_count
 
         def log_exception(task: asyncio.Task) -> None:
             if not task.cancelled() and task.exception():
@@ -237,6 +241,20 @@ class VADStream(agents.vad.VADStream):
                 len(self._buffered_frames) - max_buffer_len :
             ]
 
+        if len(self._speech_probs) >0 and max(self._speech_probs) < self._threshold:
+            self._speech_probs = []
+        if speech_prob >= self._threshold:
+            self._speech_probs.append(speech_prob)
+        elif speech_prob < self._asume_speech_min_prob:
+            self._speech_probs = []
+        elif len(self._speech_probs) > 0:
+            logging.debug(f"VAD: asuming speech, speech prob: {speech_prob:.3f}")
+            self._speech_probs.append(speech_prob)
+            speech_prob = self._threshold + 0.001
+        if len(self._speech_probs) > self._asume_speech_max_count:
+            self._speech_probs.pop(0)
+        
+
         if speech_prob >= self._threshold:
             # speaking, wait for min_speaking_duration to trigger START_SPEAKING
             self._waiting_end = False
@@ -247,6 +265,9 @@ class VADStream(agents.vad.VADStream):
             if self._waiting_start and (
                 self._current_sample - self._start_speech >= self._min_speaking_samples
             ):
+                logging.debug(
+                    f"VAD: start speaking at {self._start_speech}, current sample: {self._current_sample - self._start_speech}"
+                )
                 self._waiting_start = False
                 self._speaking = True
                 event = agents.vad.VADEvent(
@@ -265,6 +286,12 @@ class VADStream(agents.vad.VADStream):
                     speech=self._buffered_frames[padding_count:],
                 )
 
+                return
+            else:
+                # still waiting for min_speaking_duration to trigger START_SPEAKING
+                logging.debug(
+                    f"VAD: still waiting for start speaking, current sample: {self._current_sample - self._start_speech}, current speech prob: {speech_prob:.3f}"
+                )
                 return
 
         if self._speaking:

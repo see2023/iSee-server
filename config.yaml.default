@@ -20,9 +20,12 @@ agents:
   enable_video: True
   vision_lang_interval: 0
   send_vl_result: True
-  min_silence_duration: 1
-  min_speaking_duration: 1
+  min_silence_duration: 0.5
+  min_speaking_duration: 0.5
   vad_threshold: 0.5
+  vad_asume_speech_min_prob: 0.05
+  vad_asume_speech_max_count: 5
+  log_debug: True
 
 llm:
   engine: "QWEN"  # CHATGPT QWEN

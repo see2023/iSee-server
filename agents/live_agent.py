@@ -30,7 +30,7 @@ font_size = 40
 font = ImageFont.truetype(font_path, font_size)
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG if config.agents.log_debug else logging.INFO,
     format='%(asctime)s - %(levelname)s [in %(pathname)s:%(lineno)d] - %(message)s',
 )
 logger = logging.getLogger()
@@ -67,11 +67,12 @@ class ModelManager: # singleton
         else:
             raise Exception("invalid whisper type: {}".format(stt_type))
         self.detector = YoloV8Detector()
+        self.vad = VAD()
 
 
 def get_model():
     model_manager = ModelManager.get_instance()
-    return model_manager.stt_model, model_manager.detector
+    return model_manager.stt_model, model_manager.detector, model_manager.vad
 
 class LiveAgent:
     @classmethod
@@ -82,11 +83,10 @@ class LiveAgent:
     def __init__(self, ctx: agents.JobContext):
         # plugins
 
-        self.stt_model, self.detector = get_model() 
+        self.stt_model, self.detector, self.vad = get_model() 
         self.catch_follow_pos = False
         self.motion_control = SimpleControl(self.detector)
 
-        self.vad = VAD()
         logging.info("Live agent created")
 
         self.ctx = ctx
@@ -102,6 +102,8 @@ class LiveAgent:
         self.detecting: bool = False
         self.start_catch_pic = False
         self.results = []
+        self.video_streaming = False
+        self.audio_streaming = False
 
         self.show_detected_results = config.agents.show_detected_results
         if self.show_detected_results and config.agents.enable_video:
@@ -116,6 +118,7 @@ class LiveAgent:
             participant: rtc.RemoteParticipant,
         ):
             if track.kind == rtc.TrackKind.KIND_AUDIO:
+                self.audio_streaming = True
                 if config.agents.enable_audio:
                     self.ctx.create_task(self.audio_track_worker(track))
                 if not self.remoteId:
@@ -129,6 +132,7 @@ class LiveAgent:
                     loop = asyncio.get_event_loop()
                     loop.create_task(set_user_info(self.remoteId))
             elif track.kind == rtc.TrackKind.KIND_VIDEO:
+                self.video_streaming = True
                 if config.agents.enable_video:
                     self.ctx.create_task(self.video_track_worker(track))
                     self.ctx.create_task(self.video_detect_worker())
@@ -151,9 +155,13 @@ class LiveAgent:
                 logging.info("remote participant left, cleaning up")
                 self.remoteId = None
                 self.stream_key = None
+            if track.kind == rtc.TrackKind.KIND_VIDEO:
+                self.video_streaming = False
+            elif track.kind == rtc.TrackKind.KIND_AUDIO:
+                self.audio_streaming = False
 
         self.ctx.room.on("track_subscribed", subscribe_cb)
-        self.ctx.room.on("track_unsubscribed", lambda *args: logging.info("unsubscribed")) # todo, handle member disconnect
+        self.ctx.room.on("track_unsubscribed", unsubscribe_cb)
         def on_message(msg: chat_ext.ChatExtMessage):
             asyncio.ensure_future(process_chat(msg))
         self.chat.on("message_received", on_message)
@@ -200,6 +208,7 @@ class LiveAgent:
             except Exception as e:
                 logging.error("error processing vision lang: %s", e)
                 await asyncio.sleep(1)
+        logging.info("vision lang worker done")
 
     async def check_vision_lang(self, detected_names, detecting_img: Image):
         if detecting_img.width < 300 or detecting_img.height < 300:
@@ -284,14 +293,17 @@ class LiveAgent:
                 logging.error("error processing video frame: %s", e)
                 self.detecting = False
                 self.currrent_img = None
+        logging.info("video detect worker done")
 
     async def video_track_worker(self, track: rtc.VideoTrack):
         video_stream = rtc.VideoStream(track)
         last_catch_time = 0
         frame_interval_normal = config.agents.yolo_frame_interval
-        self.video_streaming = True
 
         async for event in video_stream:
+            if not self.video_streaming:
+                logging.info("streaming stopped, closing video track worker")
+                await video_stream.aclose()
             frame: rtc.VideoFrame = event.frame
             current_time = time.time()
             if (current_time - last_catch_time) < frame_interval_normal or self.detecting:
@@ -307,7 +319,6 @@ class LiveAgent:
             except Exception as e:
                 logging.error("error catching video frame: %s", e)
 
-        self.video_streaming = False
 
         logging.info("video track worker done")
     
@@ -367,6 +378,9 @@ class LiveAgent:
         logging.info("starting audio track worker")
         frame_count = 0
         async for event in audio_stream:
+            if not self.audio_streaming:
+                logging.info("streaming stopped, closing audio track worker")
+                await audio_stream.aclose()
             frame = event.frame
             if frame.sample_rate != 16000:
                 frame = frame.remix_and_resample(16000, 1)

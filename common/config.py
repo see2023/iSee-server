@@ -40,6 +40,9 @@ class AgentsConfig:
             min_speaking_duration: float,
             send_vl_result: bool,
             vad_threshold: float,
+            log_debug: bool,
+            vad_asume_speech_min_prob: float,
+            vad_asume_speech_max_count: int,
     ):
         self.show_detected_results = show_detected_results
         self.yolo_verbose = yolo_verbose
@@ -55,6 +58,9 @@ class AgentsConfig:
         self.min_speaking_duration = min_speaking_duration
         self.send_vl_result = send_vl_result
         self.vad_threshold = vad_threshold
+        self.log_debug = log_debug
+        self.vad_asume_speech_min_prob = vad_asume_speech_min_prob
+        self.vad_asume_speech_max_count = vad_asume_speech_max_count
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, any]):
