@@ -79,6 +79,9 @@ class LLMConfig:
             vl_cmd_catch_pic: str,
             chat_history_count: int,
             chat_history_time_limit: int,
+            tts: str,
+            voice_name: str,
+            vits_url: str,
     ):
         self.engine = engine.lower()
         self.model = model.lower()
@@ -90,6 +93,9 @@ class LLMConfig:
         self.vl_cmd_catch_pic = vl_cmd_catch_pic
         self.chat_history_count = chat_history_count
         self.chat_history_time_limit = chat_history_time_limit
+        self.tts = tts
+        self.voice_name = voice_name
+        self.vits_url = vits_url
 
 
     @classmethod

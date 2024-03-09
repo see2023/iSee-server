@@ -60,6 +60,9 @@ class ChatGPT(LLMBase):
                 self._producing_response = False
                 self._needs_interrupt = False
                 break
+            except Exception as e:
+                logging.error("Error in chatgpt: %s", e)
+                break
 
             if chunk is None:
                 break

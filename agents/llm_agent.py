@@ -1,11 +1,9 @@
 import asyncio
-import json
 import logging
-import os
-import sys
-import threading
-import time
+import os, sys, time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from dotenv import load_dotenv
+load_dotenv(override=True)
 import redis
 from db.redis_cli import get_redis_client, REDIS_CHAT_KEY, REDIS_PREFIX, REDIS_MQ_KEY
 from agents.chat_ext import CHAT_MEMBER_APP, CHAT_MEMBER_ASSITANT,ChatExtManager, ChatExtMessage
@@ -14,17 +12,22 @@ from llm.llm_tools import Tools, ToolNames, ToolActions
 from typing import Callable
 from livekit import rtc
 from common.http_post import get_token
-from dotenv import load_dotenv
-load_dotenv()
+from common.tts import text_to_speech_and_visemes
+from control.simple_control import Command
 
 from common.config import config
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG if config.agents.log_debug else logging.INFO,
     format='%(asctime)s - %(levelname)s [in %(pathname)s:%(lineno)d] - %(message)s',
 )
+logging.getLogger("websockets").setLevel(logging.ERROR)
 
 quit_flag: bool = False
+
+class PendingTextMessage():
+    def __init__(self, text: str, callback: Callable):
+        self.text = text
 
 class MessageConsumer():
     def __init__(self, user: str = None, callback: Callable = None ):
@@ -36,9 +39,34 @@ class MessageConsumer():
         self._rtc_api_url = os.getenv("LIVEKIT_API_URL")
         self._rtc_url = os.getenv("LIVEKIT_URL")
         self._chat = None
+        self._speeking = False
         self.llm_engine: LLMBase = get_llm()
         self.vlm: VisualLLMBase = get_vl_LLM()
+        self._tts_msg_queue = asyncio.Queue[ChatExtMessage]()
+        self._app_msg_queue = asyncio.Queue[str]()
     
+    def clear_tts_msg_queue(self):
+        while not self._tts_msg_queue.empty():
+            self._tts_msg_queue.get_nowait()
+    
+    async def run_tts_msg(self):
+        global quit_flag
+        logging.info("start tts task")
+        while not quit_flag:
+            try:
+                chat_msg:ChatExtMessage = await self._tts_msg_queue.get()
+            except asyncio.CancelledError:
+                break
+            logging.info("tts got chat message: %s", chat_msg.message)
+            res, visemes_fps = await text_to_speech_and_visemes(chat_msg.message)
+            if not res:
+                logging.error("Failed to get tts result")
+                await asyncio.sleep(1)
+                continue
+            logging.info("got tts result, len: %0.2f", len(res['visemes'])/visemes_fps)
+            await self._chat.send_audio_message(res['audio'], res['visemes'], chat_msg.id, visemes_fps)
+        logging.info("tts task finished")
+
     def update(self, user: str = None, callback: Callable = None):
         if user:
             self._user = user
@@ -50,8 +78,8 @@ class MessageConsumer():
             self._user = await self._redis_client.get(REDIS_PREFIX+ "last_user")
             if self._user:
                 logging.info("Got last user from redis: " + self._user)
-        logging.info("starting connection to livekit...")
         token = await get_token(os.getenv("API_USER"))
+        logging.info("starting connection to livekit %s, got token from: %s", self._rtc_url, self._rtc_api_url)
         def is_app_user(user_id: str) -> bool:
             if not user_id:
                 return False
@@ -79,6 +107,7 @@ class MessageConsumer():
                         logging.info("user left: " + participant.identity)
                 self._room.on("participant_disconnected", on_participant_disconnected)
 
+                # connect timeout 10s
                 await self._room.connect(self._rtc_url, token)
                 self._chat = ChatExtManager(self._room)
                 await asyncio.sleep(0.5)
@@ -86,9 +115,20 @@ class MessageConsumer():
                 def process_chat(msg: ChatExtMessage):
                     logging.info("received chat message: %s", msg.message)
                     if msg.srcname == CHAT_MEMBER_APP and msg.message is not None and len(msg.message) > 0:
-                        self.llm_engine.interrupt(msg.message)
+                        self._app_msg_queue.put_nowait(msg.message)
+                        # self.llm_engine.interrupt(msg.message)
+
+                def process_move_cmd(msg: ChatExtMessage):
+                    if msg.srcname == CHAT_MEMBER_ASSITANT:  # voice from app, but vad from assistant
+                        if msg.cmd == Command.START_SPEAK:
+                            self._speeking = True
+                            logging.info("Assistant start speaking")
+                        elif msg.cmd == Command.STOP_SPEAK:
+                            self._speeking = False
+                            logging.info("Assistant stop speaking")
 
                 self._chat.on("message_received", process_chat)
+                self._chat.on("move_received", process_move_cmd)
 
                 # find app user
                 for participant in self._room.participants.values():
@@ -108,13 +148,15 @@ class MessageConsumer():
             return False
 
     async def send_to_app(self, msg: str):
-        logging.info("sending message to app: %s", msg)
         if not self._chat:
             logging.error("No chat manager found, cannot send message to app")
             return
-        await self._chat.send_message(
+        chat_msg:ChatExtMessage = await self._chat.send_message(
             message=msg, srcname=CHAT_MEMBER_ASSITANT, timestamp=time.time(),
         )
+        logging.info("sending message to app: %s, id: %s", msg, chat_msg.id)
+        self._tts_msg_queue.put_nowait(chat_msg)
+
     
     async def handle_action(self, cmd:str, args:list = None):
         if cmd == ToolActions.VLLM:
@@ -134,14 +176,20 @@ class MessageConsumer():
 
     ## 订阅 redis stream: REDIS_CHAT_KEY，接收消息并处理
     async def run(self):
+        global quit_flag
         rt = await self.join_room()
         if not rt:
             return
         
         self._task = asyncio.create_task(self.process_app_msg())
+        self._task_tts = asyncio.create_task(self.run_tts_msg())
         while not quit_flag:
             await asyncio.sleep(1)
+        self._task.cancel()
+        self._task_tts.cancel()
         await self._task
+        await self._task_tts
+        logging.info("Quit message consumer...")
 
     async def clear_picture_dir(self, dir_path: str = "tmp"):
         if os.path.exists(dir_path):
@@ -183,36 +231,39 @@ class MessageConsumer():
 
 
     async def process_app_msg(self):
-        logging.info("Start consuming messages...")
-        redis_client = get_redis_client()
-        pubsub = redis_client.pubsub()
-        await pubsub.subscribe(REDIS_MQ_KEY)
+        logging.info("Start consuming app messages...")
+        # redis_client = get_redis_client()
+        # pubsub = redis_client.pubsub()
+        # await pubsub.subscribe(REDIS_MQ_KEY)
         while not quit_flag:
             await asyncio.sleep(0.001)
             if not self._user:
                 continue
 
-            # redis_stream_key = REDIS_CHAT_KEY + self._user
-            # messages = redis_client.xread({redis_stream_key: "$"}, count=1, block=1000)
-            # if messages and len(messages) > 0:
-            #     msg = messages[0][1][0][1]
-            #     if msg['srcname'] != CHAT_MEMBER_APP:
-            #         continue
-            #     msg_text = str(msg['text'])
-            #     logging.info("Received message from app: " + msg_text + ", start response...")
-            # xread loss message sometimes, change to pubsub
             try:
-                message = await pubsub.get_message(timeout=1)
-                if message and message['type'] =='message':
-                    msg_text = message['data']
-                    logging.info("Received message from MQ: " + msg_text + ", start response...")
-                    if msg_text == config.common.motion_mode_start_cmd or msg_text == config.common.motion_mode_stop_cmd:
-                        logging.info("Received motion mode command, skip this message")
-                        continue
-                else:
-                    if config.agents.vision_lang_interval>0:
-                        await self.check_new_picture()
+                try:
+                    msg_text:str = await self._app_msg_queue.get()
+                except asyncio.CancelledError:
+                    break
+                # xread loss message sometimes, change to pubsub
+                # message = await pubsub.get_message(timeout=3)
+                # if message and message['type'] =='message':
+                #     msg_text = message['data']
+                # else:
+                #         if config.agents.vision_lang_interval>0:
+                #             await self.check_new_picture()
+                #         continue
+                if self._speeking:
+                    logging.info("Assistant is speaking, skip this message: " + msg_text)
                     continue
+                if msg_text == config.common.motion_mode_start_cmd or msg_text == config.common.motion_mode_stop_cmd:
+                    logging.info("Received motion mode command, skip this message:" + msg_text)
+                    continue
+                if len(msg_text) <= 2:
+                    logging.info("Received short message, skip this message:" + msg_text)
+                    continue
+                logging.info("Received message: " + msg_text + ", start response...")
+
 
                 if self.llm_engine.is_responsing():
                     self.llm_engine.interrupt(msg_text)
@@ -220,9 +271,13 @@ class MessageConsumer():
                     continue
                 self.llm_engine.set_responsing_text(msg_text)
                 self.llm_engine.clear_history()
+                got_response = False
                 try:
                     async for output in self.llm_engine.generate_text_streamed(self._user, config.llm.model):
                         if output:
+                            if not got_response:
+                                got_response = True
+                                self.clear_tts_msg_queue()
                             if config.llm.enable_custom_functions:
                                 output = self.llm_engine.parse_custom_function(output)
                                 if output is None or len(output) == 0:
@@ -240,7 +295,7 @@ class MessageConsumer():
             except Exception as e:
                 logging.error(f"Error occurred while consuming message: {e}")
 
-        logging.info("Quit consuming messages...")
+        logging.info("Quit consuming app messages...")
 
 
 

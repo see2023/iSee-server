@@ -92,6 +92,9 @@ class LLMBase:
         if len(self._history) < 1:
             if use_redis_history:
                 self._history = await self.build_history_from_redis(self._user)
+                if self._history is None:
+                    logging.info("No valid history found for user_id: %s", self._user)
+                    return False
             else:
                 self._history = await self.build_system_message()
         if addtional_user_message is not None:
@@ -223,18 +226,18 @@ class LLMBase:
                     continue
                 if msg_data['srcname'] == last_msg_type:
                     logging.debug(f"combine duplicated message: {msg_data['text']}")
-                    history[0]['content'] = msg_data['text'] + history[0]['content']
+                    history[0]['content'] = msg_data['text'] + "\n" + history[0]['content']
                     continue
                 last_msg_type = msg_data['srcname']
                 first_msg_type = msg_data['srcname']
                 history.insert(0, msg.to_dict())
                 total_length += msg_length
-        # 如果第一个和最后一个的 role 都是 assistant，都需要删除
-                
+        # 如果第一个消息的role 是 assistant，需要删除
         if history and len(history) > 1 and history[0]['role'] == MessageRole.assistant.name:
             history.pop(0)
         if history and len(history) > 1 and history[-1]['role'] == MessageRole.assistant.name:
-            history.pop(-1)
+            # 最后一个消息是assistant，已经回复过了，不需要再回复
+            return None
         history.insert(0, system_message.to_dict())
         return history
     

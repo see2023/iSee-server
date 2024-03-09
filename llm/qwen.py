@@ -25,9 +25,11 @@ class Qwen(LLMBase):
             yield "Sorry, OpenAI functions are not supported for Qwen"
             logging.error("OpenAI functions are not supported for Qwen")
             return
+        logging.debug("Start qwen generation for user_id: %s", user_id)
         if not await self.prepare(user_id, model, addtional_user_message, use_redis_history):
             yield ""
             return
+        logging.debug("Qwen history: %s", self._history)
         responses = Generation.call(
             self._model,
             messages=self._history,
@@ -68,6 +70,9 @@ class Qwen(LLMBase):
                 break
             except asyncio.CancelledError:
                 logging.info("qwen cancelled for user_id: %s", self._user)
+                break
+            except Exception as e:
+                logging.error(f"Error in qwen generation: {e}")
                 break
 
         if one_sentence != '':

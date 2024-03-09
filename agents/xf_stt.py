@@ -4,6 +4,7 @@ from livekit.agents.utils import AudioBuffer
 from livekit.agents import stt
 import logging
 import time
+import asyncio
 
 import websockets
 import hashlib

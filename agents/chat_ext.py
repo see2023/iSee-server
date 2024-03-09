@@ -11,7 +11,10 @@ from livekit.rtc._event_emitter import EventEmitter
 from livekit.rtc._proto.room_pb2 import DataPacketKind
 from livekit.rtc._utils import generate_random_base62
 
+import msgpack
+
 _CHAT_TOPIC = "lk-chat-topic"
+_AUDIO_TOPIC = "lk-audio-topic"
 _MOVE_TOPIC = "lk-move-topic"
 _CHAT_UPDATE_TOPIC = "lk-chat-update-topic"
 
@@ -21,7 +24,7 @@ CHAT_MEMBER_WEB = "web"
 CHAT_MEMBER_STT = "stt"
 CHAT_MEMBER_MSG_ARRANGE = "arrange"
 
-EventTypes = Literal["message_received",]
+EventTypes = Literal["message_received", "move_received"]
 
 class ChatExtManager(EventEmitter[EventTypes]):
     """A utility class that sends and receives chat messages in the active session.
@@ -64,6 +67,48 @@ class ChatExtManager(EventEmitter[EventTypes]):
         )
         return msg
     
+    async def send_audio_message(self, audio_data: bytes, visemes, text_id: str, visemes_fps: float):
+        """Send a chat message to the end user using LiveKit Chat Protocol.
+
+        Args:
+            audio_data (bytes): the audio data to send
+            visemes (list): the visemes data to send
+            text_id (str): the text id of the response text
+
+        Returns: msg id:str
+        """
+        all_data = {
+            "text_id": text_id,
+            "visemes": visemes,
+            "audio_data": audio_data,
+            "visemes_fps": visemes_fps,
+        }
+        payload_all = msgpack.packb(all_data, use_bin_type=True)
+        # slit the payload into 14k each
+        total_size = len(payload_all)
+        chunk_size = 14000
+        if len(payload_all) % chunk_size == 0:
+            chunk_count = total_size // chunk_size
+        else:
+            chunk_count = total_size // chunk_size + 1
+        id = generate_random_base62()
+        try:
+            for i in range(chunk_count):
+                topic = f"{_AUDIO_TOPIC}/{id}/{chunk_count}/{i+1}"
+                start = i * chunk_size
+                end = start + chunk_size
+                if end > total_size:
+                    end = total_size
+                chunk_data = payload_all[start:end]
+                await self._lp.publish_data(
+                    payload=chunk_data,
+                    kind=DataPacketKind.KIND_RELIABLE,
+                    topic=topic,
+                )
+            return id 
+        except Exception as e:
+            logging.warning("failed to send audio message: %s", e, exc_info=e)
+            return None
 
     async def send_move_cmd(self, cmd: str, srcname: Optional[str] = None, timestamp: Optional[float] = None,duration: Optional[float] = None,language: Optional[str] = None):
         """
@@ -113,6 +158,15 @@ class ChatExtManager(EventEmitter[EventTypes]):
                 self.emit("message_received", msg)
             except Exception as e:
                 logging.warning("failed to parse chat message: %s", e, exc_info=e)
+        elif dp.topic == _MOVE_TOPIC:
+            try:
+                parsed = json.loads(dp.data)
+                msg = ChatExtMessage.from_jsondict(parsed)
+                if dp.participant:
+                    msg.participant = dp.participant
+                self.emit("move_received", msg)
+            except Exception as e:
+                logging.warning("failed to parse move message: %s", e, exc_info=e)
 
 @dataclass
 class ChatExtMessage:

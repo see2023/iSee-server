@@ -15,3 +15,5 @@ dashscope
 PyYAML
 cnlunar
 langchain_core
+azure-cognitiveservices-speech
+msgpack

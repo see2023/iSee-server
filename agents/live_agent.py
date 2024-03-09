@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db.redis_cli import get_redis_client, REDIS_CHAT_KEY, REDIS_PREFIX, write_chat_to_redis, write_mq_to_redis, write_detected_names_to_redis
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(override=True)
 from common.config import config
 
 from livekit import agents, rtc
@@ -33,7 +33,9 @@ logging.basicConfig(
     level=logging.DEBUG if config.agents.log_debug else logging.INFO,
     format='%(asctime)s - %(levelname)s [in %(pathname)s:%(lineno)d] - %(message)s',
 )
+logging.getLogger("websockets").setLevel(logging.ERROR)
 logger = logging.getLogger()
+
 
 
 
@@ -425,12 +427,12 @@ class LiveAgent:
                 self.catch_follow_pos = False
                 continue
 
+            await write_chat_to_redis(self.stream_key, text=speech.text, timestamp=speech.start_time, duration=duration, language=speech.language, srcname=chat_ext.CHAT_MEMBER_APP)
             await self.chat.send_message(
                 message=speech.text, srcname=chat_ext.CHAT_MEMBER_APP, timestamp=speech.start_time,
                 duration=duration, language=speech.language
             )
-            await write_chat_to_redis(self.stream_key, text=speech.text, timestamp=speech.start_time, duration=duration, language=speech.language, srcname=chat_ext.CHAT_MEMBER_APP)
-            await write_mq_to_redis(speech.text)
+            # await write_mq_to_redis(speech.text)
 
             await asyncio.sleep(0.001)
         await stt_stream.aclose()

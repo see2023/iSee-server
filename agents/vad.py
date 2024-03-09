@@ -202,7 +202,7 @@ class VADStream(agents.vad.VADStream):
         self._dispatch_event(speech_prob, resampled_frames)
         dispatch_time_taken = time.time() - now
         self._current_sample += merged_frame.samples_per_channel
-        if self._current_sample % 10000 == 0:
+        if self._current_sample % 100000 == 0:
             logging.debug(f"Processed {self._current_sample} samples, current merged frame size: {merged_frame.samples_per_channel}, time taken: {inference_time_taken:.3f}s, dispatch time taken: {dispatch_time_taken:.3f}s, speech prob: {speech_prob:.3f}")
 
     def _dispatch_event(self, speech_prob: int, original_frames: List[rtc.AudioFrame]):

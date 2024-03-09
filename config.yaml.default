@@ -38,6 +38,9 @@ llm:
   enable_custom_functions: True
   chat_history_count: 20
   chat_history_time_limit: 600
+  tts: "azure"  # azure vits
+  voice_name: "zh-CN-YunxiNeural" # zh-CN-YunxiNeural
+  vits_url: "http://192.168.17.141:9880/"
 
 api:
   www_root: "/var/www/html/"
