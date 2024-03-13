@@ -110,11 +110,12 @@ class LLMBase:
     def add_history(self, message: Message):
         # check history length
         if len(self._history) >= self._history_count and len(self._history) > 3:
-            self._history = self._history[0] + self._history[3:]
+            logging.info("History length exceeds capacity, drop oldest message: %s", self._history[0]['content'])
+            self._history = [self._history[0]] + self._history[3:]
         # check message length
         if message.get_content_length() + sum(map(lambda x: len(x['content']), self._history)) > self._message_capacity:
             logging.info("Message length exceeds capacity, drop message: %s", message.content)
-            self._history = self._history[0] + self._history[3:]
+            self._history = [self._history[0]] + self._history[3:]
         self._history.append(message.to_dict())
 
     def get_history(self) -> List[dict]:

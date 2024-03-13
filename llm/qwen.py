@@ -54,7 +54,7 @@ class Qwen(LLMBase):
                         if last_sentence_end_pos > 0:
                             sentence = one_sentence[:last_sentence_end_pos+1]
                             one_sentence = one_sentence[last_sentence_end_pos+1:]
-                            logging.info("Qwen got sentence: %s", sentence)
+                            logging.info("Qwen got sentence: %s, input tokens: %d, output tokens: %d", sentence, response.usage.input_tokens, response.usage.output_tokens)
                             yield sentence
                 else:
                     logging.warning('Request id: %s, Status code: %s, error code: %s, error message: %s' % (

@@ -137,6 +137,7 @@ class MessageConsumer():
                 for participant in self._room.participants.values():
                     if is_app_user(participant.identity):
                         self._user = participant.identity
+                        self._user_sid = participant.sid
                         logging.info("Found app user: " + self._user)
                         break
 
