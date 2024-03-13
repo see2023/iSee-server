@@ -82,6 +82,8 @@ class LLMConfig:
             tts: str,
             voice_name: str,
             vits_url: str,
+            split_skip_comma: bool,
+            split_min_length: int,
     ):
         self.engine = engine.lower()
         self.model = model.lower()
@@ -96,6 +98,8 @@ class LLMConfig:
         self.tts = tts
         self.voice_name = voice_name
         self.vits_url = vits_url
+        self.split_skip_comma = split_skip_comma
+        self.split_min_length = split_min_length
 
 
     @classmethod

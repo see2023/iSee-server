@@ -19,10 +19,11 @@ class RedisClient:
     def __init__(self):
         if self._instance is not None:
             raise Exception('This is a singleton class, use get_instance() instead')
-        self.client = redis.asyncio.Redis(host=os.getenv('REDIS_HOST'), port=os.getenv('REDIS_PORT'), db=0, decode_responses=True, 
+        self.client = redis.asyncio.Redis(host=os.getenv('REDIS_HOST'), port=os.getenv('REDIS_PORT'), db=0, decode_responses=True, socket_keepalive=True, 
                                 # ssl_ca_certs=os.getenv('REDIS_CAFILE'), ssl_certfile=os.getenv('REDIS_CERTFILE'), 
                                 password=os.getenv('REDIS_PASSWORD'), ssl=True, ssl_cert_reqs='none', 
-                                socket_timeout=10, health_check_interval=30, retry_on_timeout=True, 
+                                socket_timeout=60, 
+                                health_check_interval=30, retry_on_timeout=True, 
                         )
 
 def get_redis_client() -> redis.asyncio.Redis:

@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 import time
 import json
 import logging
+import asyncio
 from typing import Any, Callable, Dict, Literal, Optional
 
 from livekit.rtc.room import Room, Participant, DataPacket
@@ -67,7 +68,19 @@ class ChatExtManager(EventEmitter[EventTypes]):
         )
         return msg
     
-    async def send_audio_message(self, audio_data: bytes, visemes, text_id: str, visemes_fps: float):
+    async def send_chunk(self, chunk_data, topic, semaphore: asyncio.Semaphore, user_sid: str):
+        async with semaphore:
+            try:
+                await self._lp.publish_data(
+                    payload=chunk_data,
+                    kind=DataPacketKind.KIND_RELIABLE,
+                    topic=topic,
+                    destination_sids=[user_sid],
+                )
+            except Exception as e:
+                logging.warning("Failed to send chunk: %s", e, exc_info=True)
+
+    async def send_audio_message(self, audio_data: bytes, visemes, text_id: str, visemes_fps: float, user_sid: str):
         """Send a chat message to the end user using LiveKit Chat Protocol.
 
         Args:
@@ -92,19 +105,16 @@ class ChatExtManager(EventEmitter[EventTypes]):
         else:
             chunk_count = total_size // chunk_size + 1
         id = generate_random_base62()
+        tasks = []
+        semaphore = asyncio.Semaphore(10)
         try:
             for i in range(chunk_count):
                 topic = f"{_AUDIO_TOPIC}/{id}/{chunk_count}/{i+1}"
                 start = i * chunk_size
-                end = start + chunk_size
-                if end > total_size:
-                    end = total_size
+                end = min(start + chunk_size, total_size)
                 chunk_data = payload_all[start:end]
-                await self._lp.publish_data(
-                    payload=chunk_data,
-                    kind=DataPacketKind.KIND_RELIABLE,
-                    topic=topic,
-                )
+                tasks.append(self.send_chunk(chunk_data, topic, semaphore, user_sid))
+            await asyncio.gather(*tasks)
             return id 
         except Exception as e:
             logging.warning("failed to send audio message: %s", e, exc_info=e)

@@ -33,6 +33,7 @@ class MessageConsumer():
     def __init__(self, user: str = None, callback: Callable = None ):
         super().__init__()
         self._user = user
+        self._user_sid = None
         self._callback = callback
         self._redis_client: redis.asyncio.Redis = get_redis_client()
         self._room: rtc.Room = rtc.Room()
@@ -64,7 +65,7 @@ class MessageConsumer():
                 await asyncio.sleep(1)
                 continue
             logging.info("got tts result, len: %0.2f", len(res['visemes'])/visemes_fps)
-            await self._chat.send_audio_message(res['audio'], res['visemes'], chat_msg.id, visemes_fps)
+            await self._chat.send_audio_message(res['audio'], res['visemes'], chat_msg.id, visemes_fps, self._user_sid)
         logging.info("tts task finished")
 
     def update(self, user: str = None, callback: Callable = None):
@@ -95,6 +96,7 @@ class MessageConsumer():
                     logging.info("participant connected: %s %s", participant.sid, participant.identity)
                     if is_app_user(participant.identity):
                         self._user = participant.identity
+                        self._user_sid = participant.sid
                         logging.info("got user: " + self._user)
                     else:
                         logging.info("got api message: " + participant.identity)
@@ -104,6 +106,7 @@ class MessageConsumer():
                     logging.info("participant disconnected: %s %s", participant.sid, participant.identity)
                     if participant.identity == self._user:
                         self._user = None
+                        self._user_sid = None
                         logging.info("user left: " + participant.identity)
                 self._room.on("participant_disconnected", on_participant_disconnected)
 

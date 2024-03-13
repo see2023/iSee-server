@@ -41,6 +41,8 @@ llm:
   tts: "azure"  # azure vits
   voice_name: "zh-CN-YunxiNeural" # zh-CN-YunxiNeural
   vits_url: "http://192.168.17.141:9880/"
+  split_skip_comma: False
+  split_min_length: 10
 
 api:
   www_root: "/var/www/html/"

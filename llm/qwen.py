@@ -50,7 +50,7 @@ class Qwen(LLMBase):
                     if content is not None:
                         full_content += content
                         one_sentence += content
-                        last_sentence_end_pos = LLMBase.last_sentence_end(one_sentence)
+                        last_sentence_end_pos = LLMBase.last_sentence_end(one_sentence,  config.llm.split_skip_comma, config.llm.split_min_length)
                         if last_sentence_end_pos > 0:
                             sentence = one_sentence[:last_sentence_end_pos+1]
                             one_sentence = one_sentence[last_sentence_end_pos+1:]
