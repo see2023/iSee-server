@@ -305,8 +305,8 @@ class LLMBase:
             if next_step == ToolActions.LLM:
                 system_message = Message(MessageRole.system, await self.get_system_prompt())
                 self._history[0] = system_message.to_dict()
-                self.add_history(Message(content=self._fn_name + " return: " + fn_result, role=MessageRole.assistant))
-                self.add_history(Message(content="现在请回答我上一个问题", role=MessageRole.user))
+                self.add_history(Message(content='通过外部工具：' + self._fn_name + " 得知： " + fn_result, role=MessageRole.assistant))
+                self.add_history(Message(content="现在请根据外部工具的结果回答我的问题", role=MessageRole.user))
                 async for output in self.generate_text_streamed(self._user,  model=self._model, use_redis_history=False):
                     logging.info(f"Qwen generated output: {output}")
                     if output_callback_func:
