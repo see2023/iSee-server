@@ -1,0 +1,756 @@
+[
+	{
+		"input": "明天北京的天气怎么样？",
+		"output": {
+			"Reason": "我需要先搜索一下.",
+			"Tool": "Search",
+			"Args": "明天 北京 天气"
+		}
+	},
+	{
+		"input": "帮我计算一下圆周率π的值，精确到小数点后10位。",
+		"output": {
+			"Reason": "我来帮你计算一下。",
+			"Tool": "MathCalculator",
+			"Args": "round(math.pi, 10)"
+		}
+	},
+	{
+		"input": "现在可以帮我拍张照吗？",
+		"output": {
+			"Reason": "好的，我这就为你拍照。",
+			"Tool": "TakePhoto",
+			"Args": null
+		}
+	},
+	{
+		"input": "请推荐一本适合大学生阅读的心理学书籍。",
+		"output": {
+			"Reason": "我需要先搜索一下.",
+			"Tool": "Search",
+			"Args": "适合大学生阅读的心理学书籍推荐"
+		}
+	},
+	{
+		"input": "我想知道《哈利波特》全套一共有多少本？",
+		"output": {
+			"Reason": "我帮你查询一下详细信息。",
+			"Tool": "Search",
+			"Args": "哈利波特 全套 书籍 数量"
+		}
+	},
+	{
+		"input": "最近有什么热门的电视剧吗？",
+		"output": {
+			"Reason": "我需要先搜索一下当前的热门剧集。",
+			"Tool": "Search",
+			"Args": "近期热门电视剧"
+		}
+	},
+	{
+		"input": "帮我设置一个学习Python编程的计划吧。",
+		"output": "好的，我们可以从Python基础语法开始学习，然后进阶到数据结构、算法和常用库的学习，最后通过实战项目巩固知识。每天安排一定时间进行编码实践，每周总结回顾。"
+	},
+	{
+		"input": "我想知道马拉松全程是多少公里？",
+		"output": {
+			"Reason": "让我快速查找一下标准马拉松的距离。",
+			"Tool": "Search",
+			"Args": "马拉松全程距离"
+		}
+	},
+	{
+		"input": "如果我在银行存入1000元，年利率是3%，一年后我能拿到多少钱？",
+		"output": {
+			"Reason": "我来帮你计算一下利息收入。",
+			"Tool": "MathCalculator",
+			"Args": "1000 * (1 + 0.03)"
+		}
+	},
+	{
+		"input": "我最近在学编程，能帮我详细解释一下什么是递归函数吗？",
+		"output": "递归函数就是指在函数的定义中直接或间接调用它本身的函数。\n递归函数的特点是：\n函数内部调用自身。\n必须有结束条件，否则会一直调用下去，导致栈溢出。\n递归函数的优点是：\n定义简单，逻辑清晰。\n适用于解决一些具有自相似性的问题。\n递归函数的缺点是：\n效率较低，容易导致栈溢出。\n不易理解，不易调试。"
+	},
+	{
+		"input": "计算一下2的10次方是多少？",
+		"output": {
+			"Reason": "我给你算一下2的10次方的结果。",
+			"Tool": "MathCalculator",
+			"Args": "2**10"
+		}
+	},
+	{
+		"input": "给我推荐一本好看的小说吧。",
+		"output": "西游记怎么样？ 这是四大名著之一，非常有趣，还有学生版"
+	},
+	{
+		"input": "给我推荐一本好新书吧。",
+		"output": {
+			"Reason": "需要搜索相关信息。",
+			"Tool": "Search",
+			"Args": "最新好看的小说推荐"
+		}
+	},
+	{
+		"input": "突然想吃披萨了，附近有什么好吃的披萨店吗？",
+		"output": {
+			"Reason": "我帮你搜索一下附近的优质披萨店。",
+			"Tool": "Search",
+			"Args": "某某地方附近的好评披萨店"
+		}
+	},
+	{
+		"input": "帮我安排一下下周的工作计划。",
+		"output": "好的，为了更好地帮助你规划工作计划，请详细描述一下你的任务和目标。"
+	},
+	{
+		"input": "今天的数学作业是求1到50的和是多少？",
+		"output": {
+			"Reason": "我帮你计算一下总和。",
+			"Tool": "MathCalculator",
+			"Args": "sum(range(1, 51))"
+		}
+	},
+	{
+		"input": "帮我查一下圆周率的精确值是多少？",
+		"output": {
+			"Reason": "我需要搜索最新的圆周率数值。",
+			"Tool": "Search",
+			"Args": "圆周率的精确值"
+		}
+	},
+	{
+		"input": "造句练习，用‘不仅……而且……’来造一个句子",
+		"output": "一个好的例子是：这个公园不仅有美丽的花朵，而且还有各种儿童游乐设施。"
+	},
+	{
+		"input": "请解释一下什么是分数？",
+		"output": "分数是一种数学概念，表示整体的一部分，通常写作分子（上面的数）除以分母（下面的数），例如'1/2'意味着一份完整的被均分为两份，我们拥有其中的一份。"
+	},
+	{
+		"input": "我想知道汉字‘书’有多少笔画？",
+		"output": {
+			"Reason": "我需要搜索相关信息。",
+			"Tool": "Search",
+			"Args": "汉字‘书’的笔画数"
+		}
+	},
+	{
+		"input": "帮我检查下这道题：3 + 7 * 2 = ?",
+		"output": {
+			"Reason": "我将根据数学运算规则进行计算。",
+			"Tool": "MathCalculator",
+			"Args": "3 + 7 * 2"
+		}
+	},
+	{
+		"input": "列举几个中国的省份名称？",
+		"output": "如：江苏、广东、山东、河南、浙江等，中国共有34个省级行政区。"
+	},
+	{
+		"input": "给我讲个关于动物冬眠的故事？",
+		"output": "Reason: 我需要搜索相关的动物冬眠故事.",
+		"Tool": "Search",
+		"Args": "动物冬眠的故事"
+	},
+	{
+		"input": "写一首关于春天的小诗吧！",
+		"output": "春风又绿江南岸，新芽破土探春光。 花儿含笑迎风舞，小鸟轻唱在枝头。"
+	},
+	{
+		"input": "帮我理解下什么是完全平方数？",
+		"output": "完全平方数是指可以表示为某个整数乘以其自身的数，比如4=2×2，9=3×3，它们分别是2和3的平方，因此4和9都是完全平方数。"
+	},
+	{
+		"input": "能否帮我查一下唐朝是什么时候建立的？",
+		"output": {
+			"Reason": "我需要搜索历史资料以获取准确信息。",
+			"Tool": "Search",
+			"Args": "唐朝建立时间"
+		}
+	},
+	{
+		"input": "26个英文字母大小写我总是记混，能帮我复习一下吗？",
+		"output": "当然可以，我们从A开始：Aa, Bb, Cc, Dd, Ee, Ff, Gg, Hh, Ii, Jj, Kk, Ll, Mm, Nn, Oo, Pp, Qq, Rr, Ss, Tt, Uu, Vv, Ww, Xx, Yy, Zz。你可以按照这个顺序记忆并练习书写。"
+	},
+	{
+		"input": "我想知道一个正方形的对角线长度怎么算？",
+		"output": "对于一个边长为a的正方形，其对角线长度可以通过勾股定理计算：对角线长度 = √(a² + a²) = √2 * a。"
+	},
+	{
+		"input": "你能帮我翻译一句话成英文吗？'我喜欢画画'",
+		"output": "I like to draw."
+	},
+	{
+		"input": "我想听一首关于友谊的儿歌",
+		"output": "好的，让我找一首适合你的关于友谊的儿歌播放给你听，我推荐推荐歌曲名称如《找朋友》或《友谊地久天长》。"
+	},
+	{
+		"input": "我在学分解质因数，72怎么分解？",
+		"output": "72的分解质因数是：2×2×2×3×3。"
+	},
+	{
+		"input": "请帮我列举一些常见的形容词",
+		"output": "好的，这里有一些常见的形容词：快乐的、悲伤的、大的、小的、高的、矮的、漂亮的、丑陋的、聪明的、愚蠢的、温暖的、寒冷的。这些词汇可以帮助你丰富写作表达。"
+	},
+	{
+		"input": "我想了解一下昆虫的生命周期包括哪些阶段？",
+		"output": "昆虫生命周期通常包括卵、幼虫、蛹、成虫四个阶段，这被称为完全变态发育。不过，不是所有昆虫都遵循这一模式，有些昆虫可能只有部分阶段。为了提供最准确的信息，我将为你搜索相关资料。"
+	},
+	{
+		"input": "请问3乘以7等于多少？",
+		"output": {
+			"Reason": "现在就帮你算出来。",
+			"Tool": "MathCalculator",
+			"Args": "3*7"
+		}
+	},
+	{
+		"input": "2的十次方等于多少？",
+		"output": {
+			"Reason": "我来计算一下2的十次方的结果。",
+			"Tool": "MathCalculator",
+			"Args": "2**10"
+		}
+	},
+	{
+		"input": "中国的首都是哪里？",
+		"output": "中国的首都是北京。"
+	},
+	{
+		"input": "这个成语‘一石二鸟’的意思是什么？",
+		"output": "“一石二鸟”这个成语的意思是一举两得，做一件事情同时达到了两个目的。"
+	},
+	{
+		"input": "麻烦帮我解释一下‘对仗工整’在诗词中的含义？",
+		"output": "在诗词中，‘对仗工整’是指上下句的词性、结构以及平仄音韵等方面相对应，形成一种平衡美和音乐美。"
+	},
+	{
+		"input": "你能告诉我‘近义词’和‘反义词’的区别吗？",
+		"output": "当然可以，'近义词'指的是意思相近的词语，比如‘快乐’和‘愉快’；而'反义词'则是指意思相反的词语，例如‘冷’和‘热’。"
+	},
+	{
+		"input": "我想知道汉字‘阅’的笔画顺序是什么？",
+		"output": "汉字‘阅’的笔画顺序是：横折钩、竖、点、横折钩、竖弯钩。"
+	},
+	{
+		"input": "请问句子成分有哪些？",
+		"output": "常见的句子成分包括主语、谓语、宾语、定语、状语、补语等。"
+	},
+	{
+		"input": "请举例说明什么是排比句？",
+		"output": "排比句是一种修辞手法，通过三个或以上结构相同或相似、意思相关联的句子并列起来，以增强语言表现力。例如：'书是人类进步的阶梯，书是智慧的钥匙，书是无声的老师。'"
+	},
+	{
+		"input": "你能帮我分析下诗句‘床前明月光，疑是地上霜’用了什么修辞手法吗？",
+		"output": "这句诗运用了借景抒情和比喻的修辞手法，通过对明亮月光与地上霜的描绘，营造出寂静、清冷的氛围，表达诗人深深的思乡之情。"
+	},
+	{
+		"input": "请教我如何区分多音字的读音？",
+		"output": "多音字的读音通常取决于它在词语或句子中的意义和用法，一般需要结合具体的语境和词组进行记忆和学习。此外，还可以查阅字典获取多音字的不同读音及对应释义。"
+	},
+	{
+		"input": "‘千山鸟飞绝，万径人踪灭’这句诗体现了什么意境？",
+		"output": "这句诗描述了一幅荒寒寂寞的冬日山水画，体现了广阔无垠、空寂无人的意境，传达出诗人内心的孤寂和对世事变迁的感慨。"
+	},
+	{
+		"input": "写作文时，怎么才能做到首尾呼应？",
+		"output": "在写作文时，要做到首尾呼应，可以在文章开头提出主题或论点，在结尾处再次强调或深化这一主题，使文章结构完整统一，内容前后连贯。同时，也可以在开篇和结尾使用相同的关键词、短语或意象来实现呼应。"
+	},
+	{
+		"input": "李白是哪个朝代的诗人？",
+		"output": "李白是唐朝时期的著名诗人。"
+	},
+	{
+		"input": "《静夜思》是谁写的诗？",
+		"output": "《静夜思》是唐代诗人李白创作的一首五言古诗。"
+	},
+	{
+		"input": "“一寸光阴一寸金”下一句是什么？",
+		"output": "一寸光阴一寸金，寸金难买寸光阴。"
+	},
+	{
+		"input": "“读书百遍，其义自见”的上一句是什么?",
+		"output": "书读百遍，其义自见。这句话通常没有明确的上一句，它是一个独立的成语，强调反复阅读能更好地理解文章含义。"
+	},
+	{
+		"input": "请你解释一下“狐假虎威”这个成语的意思？",
+		"output": "“狐假虎威”这个成语意思是狐狸假借老虎的威势吓唬其它动物，比喻依仗别人的权势来欺压、恐吓人。"
+	},
+	{
+		"input": "我想知道“三顾茅庐”这个故事的主角是谁？",
+		"output": "“三顾茅庐”这个故事的主角是刘备和诸葛亮。刘备三次亲自到诸葛亮的住处请他出山辅佐自己打天下。"
+	},
+	{
+		"input": "帮我列出五个关于春天的成语。",
+		"output": "春暖花开、春意盎然、鸟语花香、春回大地、万物复苏。"
+	},
+	{
+		"input": "造句：用'不耻下问'这个词造一个句子。",
+		"output": "老师经常教导我们要有不耻下问的精神，不懂的问题要敢于向别人请教。"
+	},
+	{
+		"input": "“独在异乡为异客，每逢佳节倍思亲”这句诗出自哪里？",
+		"output": "这句诗出自唐代诗人王之涣的《九月九日忆山东兄弟》。"
+	},
+	{
+		"input": "解释词语“画蛇添足”的意思。",
+		"output": "“画蛇添足”这个词语源自《战国策·齐策二》，原意是在画蛇时多此一举给蛇添上脚，后用来比喻做事多余、反而破坏了事情的完整性，或者做了不必要的、过分的事情。"
+	},
+	{
+		"input": "What's the meaning of 'apple' in English?",
+		"output": "The meaning of 'apple' in English is a type of fruit that typically grows on trees and is round with red, green, or yellow skin."
+	},
+	{
+		"input": "Can you help me with my English spelling? How to spell 'banana'",
+		"output": "'Banana' is spelled as b-a-n-a-n-a."
+	},
+	{
+		"input": "I need help understanding the past tense of the verb 'go'.",
+		"output": "The past tense of the verb 'go' is 'went'. For example: Yesterday, I went to the park."
+	},
+	{
+		"input": "What's an adjective for describing a very big dog?",
+		"output": "An adjective to describe a very big dog could be 'enormous' or 'gigantic'."
+	},
+	{
+		"input": "How do I form a simple present sentence?",
+		"output": "To form a simple present sentence, use the base form of the verb (except for the verb 'to be' and 'to have', which have irregular forms) for third person singular subjects (he/she/it), add '-s' or '-es' to the verb. For example: He walks to school every day."
+	},
+	{
+		"input": "What's the plural form of 'sheep'?",
+		"output": "The plural form of 'sheep' remains the same; it's still 'sheep'."
+	},
+	{
+		"input": "Please explain the difference between 'there' and 'their'",
+		"output": "'There' refers to a place or location, e.g., The book is over there. 'Their' is a possessive pronoun used to show ownership, e.g., Their book is on the table."
+	},
+	{
+		"input": "Help me with this math problem related to English homework: What's 2 times 5?",
+		"output": "2 times 5 equals 10."
+	},
+	{
+		"input": "List some common irregular verbs in English.",
+		"output": "Some common irregular verbs in English are: go - went, eat - ate, see - saw, do - did, have - had."
+	},
+	{
+		"input": "What's the correct answer to the question 'What is the capital of France?'",
+		"output": "The correct answer is Paris."
+	},
+	{
+		"input": "我在学小学英语，能帮我解释一下‘present’这个单词的意思吗？",
+		"output": "present这个词在小学英语中通常有两层意思：1. 礼物，比如你过生日时收到的礼物；2. 现在的，目前的，如 'I am here now' 中的 'now' 可以用 'present' 表示。"
+	},
+	{
+		"input": "我不明白什么是形容词和副词，请给我举几个例子并解释一下？",
+		"output": "形容词是用来描述或修饰名词或代词的词汇，例如'big'（大的）、'happy'（快乐的）。它们说明人或事物的特征。副词则主要用来修饰动词、形容词或其他副词，表达时间、地点、程度等信息，例如'quickly'（快速地）、'very'（非常）等。"
+	},
+	{
+		"input": "我想知道一般现在时和现在进行时的区别是什么？",
+		"output": "一般现在时表示习惯性、常态的动作或者客观存在的事实，如'He goes to school every day'（他每天上学）。现在进行时则表示正在进行的动作或现阶段内持续的状态，如'He is studying English now'（他现在正在学习英语）。"
+	},
+	{
+		"input": "我在做作业，你能告诉我五大基本句型是哪些吗？",
+		"output": "当然可以，小学英语中的五大基本句型主要包括：1. 主语 + 谓语（不及物动词），如 'The bird flies'（鸟飞）；2. 主语 + 谓语（及物动词）+ 宾语，如 'I eat an apple'（我吃一个苹果）；3. 主语 + 系动词 + 表语，如 'She is a student'（她是一名学生）；4. 主语 + 谓语 + 间接宾语 + 直接宾语，如 'She gives me a book'（她给我一本书）；5. 主语 + 谓语 + 宾语 + 宾语补足语，如 'We make him our monitor'（我们选他当班长）。"
+	},
+	{
+		"input": "我想了解be动词am, is, are的使用规则？",
+		"output": "be动词am, is, are的使用规则如下： 'am' 用于第一人称单数'I'后，例如 'I am a student'（我是学生）； 'is' 用于第三人称单数，即he, she, it之后，例如 'She is reading a book'（她在看书）； 'are' 用于第二人称you以及所有人称复数，例如 'They are playing football'（他们在踢足球）和 'You are my friend'（你是我的朋友）。"
+	},
+	{
+		"input": "请告诉我怎么区别there be句型和have/has的用法？",
+		"output": "there be句型主要用于表达某处存在某物，强调的是“存在”，例如'There is a cat under the table'（桌子下面有一只猫）。而have/has则是表达拥有或占有，主语通常是人或动物，例如'I have a cat'（我有一只猫）。两者的主要区别在于，there be句型关注的是某物在某个位置的存在情况，而have/has关注的是所属关系或所有关系。"
+	},
+	{
+		"input": "你能帮我复习一下介词in, on, at的用法吗？",
+		"output": "当然可以，介词in, on, at的基本用法如下： 'in' 通常用于较长时间段、年份、月份、季节、世纪等，例如 'I was born in 2005'（我出生于2005年）或 'Class starts in the morning'（课在早上开始）；  'on' 用于具体的日期、星期几以及特定某一天的上下午晚上，例如 'I will go to the park on Sunday'（周日我会去公园）； 'at' 则用于具体的时间点、节日以及较小的地点，例如 'I usually wake up at 7 o'clock'（我通常七点钟起床）或 'I'll meet you at the school gate'（我在学校门口等你）。"
+	},
+	{
+		"input": "请解释一下过去式和过去分词的区别和联系？",
+		"output": "过去式是动词的一种形式，表示动作发生在过去，如do的过去式是did。过去分词则不仅表示过去的动作，它还常与助动词have/has/had结合构成完成时态，同时也可以作为形容词使用，表示被动或完成的概念，如done。二者之间的联系在于，许多情况下动词的过去分词同时也是过去式的变形，但并非所有动词都遵循这一规律，有些动词的过去式和过去分词形式不同，如go的过去式是went，过去分词是gone。"
+	},
+	{
+		"input": "我想知道如何区分可数名词和不可数名词，并分别举几个例子？",
+		"output": "可数名词是可以量化，通常有复数形式的名词，如：'book'（书），其复数形式为'books'；'apple'（苹果），复数形式为'apples'。不可数名词是指无法分割成个体单位，没有复数形式的名词，如：'water'（水），不能说*'waters'*；'information'（信息），不能说*'informations'*。另外，部分物质名词虽不可数，但在特定语境下可量化，如：'bread'（面包），可以说'a loaf of bread'（一条面包）；'coffee'（咖啡），可以说'a cup of coffee'（一杯咖啡）。"
+	},
+	{
+		"input": "帮我解释一下什么是'公约数'",
+		"output": "公约数是指能同时整除几个整数的数中最大的那个数，例如2和4的公约数是2。"
+	},
+	{
+		"input": "给我举个关于分数的例子",
+		"output": "比如你有一个苹果，你要和朋友平分，每人得到半个，那么每人分得的就是这个苹果的1/2。"
+	},
+	{
+		"input": "3的平方是多少?",
+		"output": {
+			"Reason": "我将进行计算",
+			"Tool": "MathCalculator",
+			"Args": "3**2"
+		}
+	},
+	{
+		"input": "如何计算直角三角形的斜边长度?",
+		"output": "可以使用勾股定理，a² + b² = c²，其中c代表斜边长度，a和b分别代表两条直角边的长度。"
+	},
+	{
+		"input": "最小的合数是多少?",
+		"output": "最小的合数是4。"
+	},
+	{
+		"input": "两位数相乘的步骤是什么?",
+		"output": "两位数相乘的步骤通常包括：先用一个数的个位与另一个数的所有位相乘并记录结果；再用一个数的十位与另一个数的所有位相乘，并在结果后添加相应数量的零（表示位置），然后将两次的结果相加。"
+	},
+	{
+		"input": "五年级的孩子应该掌握哪些数学公式?",
+		"output": {
+			"Reason": "我需要搜索相关信息",
+			"Tool": "Search",
+			"Args": "五年级数学公式"
+		}
+	},
+	{
+		"input": "今天的北京天气如何？",
+		"output": {
+			"Reason": "我需要先搜索一下.",
+			"Tool": "Search",
+			"Args": "北京天气"
+		}
+	},
+	{
+		"input": "最近有哪些热门的编程语言值得学习？",
+		"output": {
+			"Reason": "我需要先搜索一下最新信息.",
+			"Tool": "Search",
+			"Args": "最新热门编程语言学习"
+		}
+	},
+	{
+		"input": "请问附近有什么好吃的餐厅推荐吗？",
+		"output": {
+			"Reason": "我帮你搜索一下周边餐厅.",
+			"Tool": "Search",
+			"Args": "附近美食餐厅推荐"
+		}
+	},
+	{
+		"input": "帮我查一下今天下午从北京到上海的高铁时刻表",
+		"output": {
+			"Reason": "我需要查询实时的列车时刻信息.",
+			"Tool": "Search",
+			"Args": "今天下午 北京到上海 高铁时刻表"
+		}
+	},
+	{
+		"input": "我想知道今年诺贝尔文学奖得主是谁？",
+		"output": {
+			"Reason": "我需要获取最新的获奖信息.",
+			"Tool": "Search",
+			"Args": "今年 诺贝尔文学奖 得主"
+		}
+	},
+	{
+		"input": "请告诉我下周四北京的PM2.5指数预报",
+		"output": {
+			"Reason": "我需要查询空气质量预报.",
+			"Tool": "Search",
+			"Args": "下周四 北京 PM2.5 指数预报"
+		}
+	},
+	{
+		"input": "求推荐一款性价比高的笔记本电脑",
+		"output": {
+			"Reason": "我需要搜索一下最新的电子产品评价.",
+			"Tool": "Search",
+			"Args": "性价比高的笔记本电脑推荐"
+		}
+	},
+	{
+		"input": "帮我查看一下明天早上的瑜伽课程安排",
+		"output": {
+			"Reason": "我需要查找明天的课程信息.",
+			"Tool": "Search",
+			"Args": "明天早上 瑜伽课程 安排"
+		}
+	},
+	{
+		"input": "我想了解一下全球最高的山峰是哪座？",
+		"output": {
+			"Reason": "我需要查找地理知识信息.",
+			"Tool": "Search",
+			"Args": "全球最高山峰 是哪座"
+		}
+	},
+	{
+		"input": "我想知道明天早上8点有去上海的火车吗？",
+		"output": {
+			"Reason": "我需要先搜索一下.",
+			"Tool": "Search",
+			"Args": "明天早上8点 北京到上海 火车时刻表"
+		}
+	},
+	{
+		"input": "帮我查一下附近有什么好吃的餐厅吧。",
+		"output": {
+			"Reason": "我需要先搜索一下.",
+			"Tool": "Search",
+			"Args": "附近美食餐厅推荐"
+		}
+	},
+	{
+		"input": "最近有什么热门的科幻电影可以看吗？",
+		"output": {
+			"Reason": "我需要先搜索一下.",
+			"Tool": "Search",
+			"Args": "最近热门科幻电影"
+		}
+	},
+	{
+		"input": "帮我查询一下今天的美股行情如何？",
+		"output": {
+			"Reason": "我需要先搜索一下.",
+			"Tool": "Search",
+			"Args": "今日美股行情"
+		}
+	},
+	{
+		"input": "我想了解下周四的会议地点在哪里？",
+		"output": {
+			"Reason": "我需要先搜索一下.",
+			"Tool": "Search",
+			"Args": "下周四会议地点"
+		}
+	},
+	{
+		"input": "最近有哪些值得一读的新书推荐？",
+		"output": {
+			"Reason": "我需要先搜索一下.",
+			"Tool": "Search",
+			"Args": "近期新书推荐"
+		}
+	},
+	{
+		"input": "我想知道今天的猪肉市场价格是多少？",
+		"output": {
+			"Reason": "我需要先搜索一下.",
+			"Tool": "Search",
+			"Args": "今天猪肉市场价格"
+		}
+	},
+	{
+		"input": "帮我查看一下附近哪里有24小时营业的便利店？",
+		"output": {
+			"Reason": "我需要先搜索一下.",
+			"Tool": "Search",
+			"Args": "附近24小时便利店位置"
+		}
+	},
+	{
+		"input": "你能帮我确认一下现在窗外是否有雾霾吗？",
+		"output": {
+			"Reason": "我需要通过摄像头查看窗外情况",
+			"Tool": "TakePhoto",
+			"Args": "None"
+		}
+	},
+	{
+		"input": "我想了解下我家猫现在在做什么",
+		"output": {
+			"Reason": "我需要通过摄像头查看宠物的状态",
+			"Tool": "TakePhoto",
+			"Args": "None"
+		}
+	},
+	{
+		"input": "我想知道今晚的月亮是圆还是缺",
+		"output": {
+			"Reason": "我需要通过摄像头拍摄夜空中的月亮来判断",
+			"Tool": "TakePhoto",
+			"Args": "None"
+		}
+	},
+	{
+		"input": "我今天穿的这件衣服怎么样？",
+		"output": {
+			"Reason": "我需要通过摄像头看一下你的衣服",
+			"Tool": "TakePhoto",
+			"Args": "None"
+		}
+	},
+	{
+		"input": "你能帮我看看我搭配的这套衣服是否合适吗？",
+		"output": {
+			"Reason": "我需要先通过摄像头获取你的服装搭配",
+			"Tool": "TakePhoto",
+			"Args": "None"
+		}
+	},
+	{
+		"input": "你认为我应该穿哪双鞋配这件新买的衬衫？",
+		"output": {
+			"Reason": "我需要查看一下你的鞋子和衬衫的搭配情况",
+			"Tool": "TakePhoto",
+			"Args": "None"
+		}
+	},
+	{
+		"input": "你看我涂这个口红色号显白吗？",
+		"output": {
+			"Reason": "我需要实时查看你的口红颜色效果",
+			"Tool": "TakePhoto",
+			"Args": "None"
+		}
+	},
+	{
+		"input": "我想买个帽子，你能帮我看看这款帽子适合我吗？",
+		"output": {
+			"Reason": "我需要通过摄像头判断帽子是否适合你",
+			"Tool": "TakePhoto",
+			"Args": "None"
+		}
+	},
+	{
+		"input": "你觉得我戴这个眼镜好看吗？",
+		"output": {
+			"Reason": "我需要通过摄像头查看你戴眼镜的样子",
+			"Tool": "TakePhoto",
+			"Args": "None"
+		}
+	},
+	{
+		"input": "我刚做了一个新发型，你看效果如何？",
+		"output": {
+			"Reason": "我需要先从摄像头确认你的新发型",
+			"Tool": "TakePhoto",
+			"Args": "None"
+		}
+	},
+	{
+		"input": "你看我这样穿去参加晚上的派对合适吗？",
+		"output": {
+			"Reason": "我需要通过摄像头来评价你的派对着装",
+			"Tool": "TakePhoto",
+			"Args": "None"
+		}
+	},
+	{
+		"input": "你能帮我看看这身运动装备是否合适运动吗？",
+		"output": {
+			"Reason": "我需要通过摄像头检查你的运动装备是否合适",
+			"Tool": "TakePhoto",
+			"Args": "None"
+		}
+	},
+	{
+		"input": "我脸上这个妆容自然吗？",
+		"output": {
+			"Reason": "我需要实时查看你的妆容效果",
+			"Tool": "TakePhoto",
+			"Args": "None"
+		}
+	},
+	{
+		"input": "今天适合穿什么衣服出门？",
+		"output": {
+			"Reason": "我需要先搜索一下今天的天气和穿衣建议。",
+			"Tool": "Search",
+			"Args": "今日穿衣指数"
+		}
+	},
+	{
+		"input": "这道数学题的答案是多少？5+7*3-2/4",
+		"output": {
+			"Reason": "我帮你计算一下结果。",
+			"Tool": "MathCalculator",
+			"Args": "5+7*3-2/4"
+		}
+	},
+	{
+		"input": "你觉得这张画怎么样？",
+		"output": {
+			"Reason": "我先通过摄像头获取画的内容进行分析。",
+			"Tool": "TakePhoto",
+			"Args": null
+		}
+	},
+	{
+		"input": "这个植物是什么品种？",
+		"output": {
+			"Reason": "我需要搜索或识别该植物的信息。",
+			"Tool": "Search",
+			"Args": "植物识别 这个植物的图片"
+		}
+	},
+	{
+		"input": "我新买的衬衫颜色如何搭配比较好？",
+		"output": {
+			"Reason": "我需要搜索一些时尚搭配建议。",
+			"Tool": "Search",
+			"Args": "衬衫颜色搭配"
+		}
+	},
+	{
+		"input": "这是什么动物？",
+		"output": {
+			"Reason": "我需要通过摄像头捕捉图像识别动物种类。",
+			"Tool": "TakePhoto",
+			"Args": null
+		}
+	},
+	{
+		"input": "你能看看我手里的这本书封面吗，我想知道书名",
+		"output": {
+			"Reason": "我需要通过摄像头获取书的封面信息。",
+			"Tool": "TakePhoto",
+			"Args": null
+		}
+	},
+	{
+		"input": "这只猫可爱吗？",
+		"output": {
+			"Reason": "我先通过摄像头看一下这只猫的样子。",
+			"Tool": "TakePhoto",
+			"Args": null
+		}
+	},
+	{
+		"input": "这个植物是什么品种?",
+		"output": {
+			"Reason": "我需要通过摄像头获取图像进行识别",
+			"Tool": "TakePhoto",
+			"Args": null
+		}
+	},
+	{
+		"input": "请判断这个水果是不是柠檬？",
+		"output": {
+			"Reason": "我先从摄像头看一下它",
+			"Tool": "TakePhoto",
+			"Args": null
+		}
+	},
+	{
+		"input": "帮我拍张照片看看这是什么苹果品种，口感如何？",
+		"output": {
+			"Reason": "我先从摄像头看一下它",
+			"Tool": "TakePhoto",
+			"Args": null
+		}
+	},
+	{
+		"input": "这道数学题的答案是多少？3*5+7/2-1",
+		"output": {
+			"Reason": "我给你算一下",
+			"Tool": "MathCalculator",
+			"Args": "3*5+7/2-1"
+		}
+	},
+	{
+		"input": "这款手机好看吗？",
+		"output": {
+			"Reason": "我需要通过摄像头获取实物图像",
+			"Tool": "TakePhoto",
+			"Args": null
+		}
+	}
+]
