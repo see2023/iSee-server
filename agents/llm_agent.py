@@ -58,6 +58,9 @@ class MessageConsumer():
                 chat_msg:ChatExtMessage = await self._tts_msg_queue.get()
             except asyncio.CancelledError:
                 break
+            if not chat_msg.message or len(chat_msg.message) < 2:
+                logging.info("empty message, skip")
+                continue
             logging.info("tts got chat message: %s", chat_msg.message)
             res, visemes_fps = await text_to_speech_and_visemes(chat_msg.message)
             if not res:
@@ -223,9 +226,7 @@ class MessageConsumer():
         if message:
             logging.info("received vision lang message: %s", message)
             if config.agents.send_vl_result:
-                await self._chat.send_message(
-                    message=message, srcname=CHAT_MEMBER_ASSITANT, timestamp=time.time(),
-                )
+                await self.send_to_app(message)
         else:
             logging.info("no vision lang message received")
             

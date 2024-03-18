@@ -309,7 +309,7 @@ class LiveAgent:
             frame: rtc.VideoFrame = event.frame
             current_time = time.time()
             if (current_time - last_catch_time) < frame_interval_normal or self.detecting:
-                logging.debug("video frame skipped ______ ")
+                # logging.debug("video frame skipped ______ ")
                 continue
             last_catch_time = current_time
             logging.debug("received video frame: %d x %d", frame.width, frame.height)
