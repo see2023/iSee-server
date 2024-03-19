@@ -1,23 +1,25 @@
-model_path = "/content/drive/MyDrive/github/llm/Qwen1.5/examples/sft/output_qwen_1.8B"
-new_path = "/content/drive/MyDrive/github/llm/Qwen1.5/examples/sft/output_qwen_1.8B_full"
-quant_path = "/content/drive/MyDrive/github/llm/Qwen1.5/examples/sft/output_qwen_1_8_awq"
-org_path = "Qwen/Qwen1.5-1.8B-Chat"
-
+import os,json
 from awq import AutoAWQForCausalLM
 from transformers import AutoTokenizer
+
+org_path = "Qwen/Qwen1.5-1.8B-Chat"
+model_root = "E:\dp\llm\qwen"
+cache_root = "E:\dp\cache"
+model_path = os.path.join(model_root, "output_qwen_1.8B_full")
+quant_path = os.path.join(model_root, "output_qwen_1.8B_full_quant")
 
 # Specify paths and hyperparameters for quantization
 quant_config = { "zero_point": True, "q_group_size": 128, "w_bit": 4, "version": "GEMM" }
 
 # Load your tokenizer and model with AutoAWQ
-tokenizer = AutoTokenizer.from_pretrained(new_path)
-model = AutoAWQForCausalLM.from_pretrained(new_path, device_map="auto", safetensors=True)
-print("load model from " + new_path)
+tokenizer = AutoTokenizer.from_pretrained(model_path, cache_dir=cache_root)
+model = AutoAWQForCausalLM.from_pretrained(model_path, device_map="auto", safetensors=True, cache_dir=cache_root)
+print("load model from " + model_path)
 
-import json
 data = []
-jsonl_file =  '/content/drive/MyDrive/github/llm/fine_tune_2.jsonl'
-with open(jsonl_file, 'r') as f:
+jsonl_file =  os.path.join(model_root, "fine_tune_2.jsonl")
+# unicode read
+with open(jsonl_file, 'r', encoding='utf-8') as f:
     messages = [json.loads(line) for line in f]
 for msg in messages:
     msgs = msg['messages']
