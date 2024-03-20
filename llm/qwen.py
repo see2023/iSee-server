@@ -80,8 +80,8 @@ class Qwen(LLMBase):
             logging.info("Last sentence from Qwen: %s", one_sentence)
 
         logging.debug("qwen got full content: %s", full_content)
-        if use_redis_history:
-            await self.save_message_to_redis(self._user, full_content)
+        if not config.llm.enable_custom_functions and not config.llm.enable_openai_functions:
+            self._fn_output = full_content
         self._needs_interrupt = False
         self._producing_response = False
         self._interactions_count += 1

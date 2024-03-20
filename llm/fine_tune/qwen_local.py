@@ -62,8 +62,8 @@ class QwenLocal(LLMBase):
         full_content: str = ''
         self._producing_response = True
         full_content = await self.generate_async(self._history)
-        if use_redis_history:
-            await self.save_message_to_redis(self._user, full_content)
+        if not config.llm.enable_custom_functions and not config.llm.enable_openai_functions:
+            self._fn_output = full_content
         self._needs_interrupt = False
         self._producing_response = False
         self._interactions_count += 1

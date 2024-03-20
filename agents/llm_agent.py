@@ -300,6 +300,7 @@ class MessageConsumer():
                             await self.send_to_app(output)
                             if self._callback:
                                 self._callback(output)
+                    await self.llm_engine.save_message_to_redis(self._user, self.llm_engine.get_output())
                     if config.llm.enable_custom_functions:
                         await self.llm_engine.handle_custom_function_output(output_callback_func=self.send_to_app, cmd_callback_func=self.handle_action)
                 except Exception as e:

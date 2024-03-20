@@ -67,6 +67,7 @@ class LLMBase:
         self._tools = Tools()
         self._fn_name = ""
         self._fn_args = ""
+        self._fn_output = ""
         self._user = ""
         self._model = ""
         self._history: List[dict] = []
@@ -80,18 +81,26 @@ class LLMBase:
     
     def set_custom_tool_prompt(self, prompt: str):
         self._custom_tool_prompt = prompt
+    
+    def get_output(self) -> str:
+        return self._fn_output
+
+    def clean_output(self):
+        self._fn_name = ""
+        self._fn_args = ""
+        self._fn_output = ""
 
     def clear_history(self):
         self._history = []
         self._function_working = True
-        self._fn_name = ""
-        self._fn_args = ""
         self._interactions_count = 0
+        self.clean_output()
     
     async def prepare(self, user: str, model: str, addtional_user_message: Message = None, use_redis_history: bool = True) -> bool:
         if self._interactions_count >= self._max_interactions:
             logging.info("Max interactions reached for user_id: %s", user)
             return False
+        self.clean_output()
         if user and len(user) > 0:
             self._user = user
         if model and len(model) > 0:
@@ -295,8 +304,10 @@ class LLMBase:
                     self._fn_name = data["Tool"]
                     self._fn_args = data["Args"]
                 if "Text" in data:
+                    self._fn_output = data["Text"]
                     return data["Text"]
                 else:
+                    self._fn_output = text
                     logging.warning(f"Invalid custom function output json text: {text}")
                     return text
             except Exception as e:
@@ -329,7 +340,9 @@ class LLMBase:
             else:
                 pass
         new_lines_str = "\n".join(new_lines)
-        return new_lines_str.strip()
+        new_lines_str = new_lines_str.strip()
+        self._fn_output += new_lines_str
+        return new_lines_str
 
     async def handle_custom_function_output(self, output_callback_func: Callable[[str], None] = None, cmd_callback_func: Callable[[str], None] = None) -> str:
         self.set_function_working(False)
@@ -345,16 +358,19 @@ class LLMBase:
                 self._history[0] = system_message.to_dict()
                 self.add_history(Message(content='通过外部工具：' + self._fn_name + " 得知： " + fn_result, role=MessageRole.assistant))
                 self.add_history(Message(content="现在请根据外部工具的结果回答我的问题", role=MessageRole.user))
+                output_all = ''
                 if self.stream_support():
                     async for output in self.generate_text_streamed(self._user,  model=self._model, use_redis_history=False):
                         logging.info(f"after custom function, llm stream output: {output}")
+                        output_all += output
                         if output_callback_func:
                             await output_callback_func(output)
                 else:
-                    output = await self.generate_text(self._user,  model=self._model, use_redis_history=False)
-                    logging.info(f"after custom function, llm output: {output}")
+                    output_all = await self.generate_text(self._user,  model=self._model, use_redis_history=False)
+                    logging.info(f"after custom function, llm output: {output_all}")
                     if output_callback_func:
-                        await output_callback_func(output)
+                        await output_callback_func(output_all)
+                await self.save_message_to_redis(self._user, output_all)
             elif next_step == ToolActions.VLLM:
                 if cmd_callback_func:
                     await cmd_callback_func(ToolActions.VLLM)
