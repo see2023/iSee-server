@@ -141,7 +141,10 @@ class LLMBase:
         if prompt_type == "default":
             return default_prompt
         if self._custom_tool_prompt is not None:
-            return default_prompt +self._custom_tool_prompt
+            if config.llm.enable_custom_functions and self._function_working:
+                return default_prompt +self._custom_tool_prompt
+            else:
+                return default_prompt
         if prompt_type in SYSTEM_PROMPTS:
             add_prompt = SYSTEM_PROMPTS[prompt_type]
             if prompt_type == "tools" and config.llm.enable_custom_functions and self._function_working:

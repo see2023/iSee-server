@@ -6,13 +6,14 @@ from llm.llm_base import LLMBase, Message
 import logging
 import asyncio
 from common.config import config
+import torch
 
 class QwenLocal(LLMBase):
     def __init__(self, model_path, cache_root, device="cuda"):
         super().__init__(stream_support=False)
         self.model_path = model_path
         self.cache_root = cache_root
-        self.device = device
+        self.device = device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = AutoModelForCausalLM.from_pretrained(
             model_path,
             torch_dtype="auto",
