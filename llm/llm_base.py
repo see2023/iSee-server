@@ -47,7 +47,7 @@ SYSTEM_PROMPTS = {
 }
 
 class LLMBase:
-    def __init__(self, app_secret_env_var_name: str=None, app_id_env_var_name: str=None, message_capacity:int=6000, history_count: int = 0):
+    def __init__(self, app_secret_env_var_name: str=None, app_id_env_var_name: str=None, message_capacity:int=6000, history_count: int = 0, stream_support: bool = True):
         if history_count <= 0:
             history_count = config.llm.chat_history_count
         if app_secret_env_var_name:
@@ -72,7 +72,14 @@ class LLMBase:
         self._history: List[dict] = []
         self._interactions_count = 0
         self._max_interactions = 3
+        self._stream_support = stream_support
+        self._custom_tool_prompt:str = None
     
+    def stream_support(self) -> bool:
+        return self._stream_support
+    
+    def set_custom_tool_prompt(self, prompt: str):
+        self._custom_tool_prompt = prompt
 
     def clear_history(self):
         self._history = []
@@ -133,6 +140,8 @@ class LLMBase:
             default_prompt += SYSTEM_PROMPTS["detect"] % (detected_names)
         if prompt_type == "default":
             return default_prompt
+        if self._custom_tool_prompt is not None:
+            return default_prompt +self._custom_tool_prompt
         if prompt_type in SYSTEM_PROMPTS:
             add_prompt = SYSTEM_PROMPTS[prompt_type]
             if prompt_type == "tools" and config.llm.enable_custom_functions and self._function_working:
@@ -248,7 +257,10 @@ class LLMBase:
         history.append(system_message.to_dict())
         return history
     
-    async def generate_text_streamed(self, user_id: str, model: str = "", addtional_user_message: Message = None) -> AsyncIterable[str]:
+    async def generate_text_streamed(self, user_id: str, model: str = "", addtional_user_message: Message = None, use_redis_history: bool = True) -> AsyncIterable[str]:
+        pass
+
+    async def generate_text(self, user_id: str, model: str = "", addtional_user_message: Message = None, use_redis_history: bool = True) ->str:
         pass
 
     async def save_message_to_redis(self, user_id: str, content: str, role: MessageRole = MessageRole.assistant):
@@ -259,10 +271,33 @@ class LLMBase:
         logging.debug(f"Saved message to redis: {content}")
         # except Exception as e:
         #     logging.error(f"Failed to save message to redis: {e}")  
+    
+    def extract_json_part(self, text: str) -> str:
+        json_start = text.find("{")
+        if json_start == -1:
+            return ""
+        json_end = text.rfind("}")
+        if json_end == -1:
+            return ""
+        return text[json_start:json_end+1]
 
     def parse_custom_function(self, text: str) -> str:
         if not config.llm.enable_custom_functions:
             return text
+        if config.llm.custom_functios_output_use_json:
+            try:
+                text_json = self.extract_json_part(text)
+                data = json.loads(text_json)
+                if "Tool" in data and "Args" in data:
+                    self._fn_name = data["Tool"]
+                    self._fn_args = data["Args"]
+                if "Text" in data:
+                    return data["Text"]
+                else:
+                    logging.warning(f"Invalid custom function output json text: {text}")
+                    return text
+            except Exception as e:
+                logging.error(f"Failed to parse custom function json: {e}")  
         text = text.strip()
         lines = text.split("\n")
         new_lines = []
@@ -307,8 +342,14 @@ class LLMBase:
                 self._history[0] = system_message.to_dict()
                 self.add_history(Message(content='通过外部工具：' + self._fn_name + " 得知： " + fn_result, role=MessageRole.assistant))
                 self.add_history(Message(content="现在请根据外部工具的结果回答我的问题", role=MessageRole.user))
-                async for output in self.generate_text_streamed(self._user,  model=self._model, use_redis_history=False):
-                    logging.info(f"Qwen generated output: {output}")
+                if self.stream_support():
+                    async for output in self.generate_text_streamed(self._user,  model=self._model, use_redis_history=False):
+                        logging.info(f"after custom function, llm stream output: {output}")
+                        if output_callback_func:
+                            await output_callback_func(output)
+                else:
+                    output = await self.generate_text(self._user,  model=self._model, use_redis_history=False)
+                    logging.info(f"after custom function, llm output: {output}")
                     if output_callback_func:
                         await output_callback_func(output)
             elif next_step == ToolActions.VLLM:

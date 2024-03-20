@@ -276,17 +276,27 @@ class MessageConsumer():
                     continue
                 self.llm_engine.set_responsing_text(msg_text)
                 self.llm_engine.clear_history()
-                got_response = False
                 try:
-                    async for output in self.llm_engine.generate_text_streamed(self._user, config.llm.model):
+                    if self.llm_engine.stream_support():
+                        got_response = False
+                        async for output in self.llm_engine.generate_text_streamed(self._user, config.llm.model):
+                            if output:
+                                if not got_response:
+                                    got_response = True
+                                    self.clear_tts_msg_queue()
+                                if config.llm.enable_custom_functions:
+                                    output = self.llm_engine.parse_custom_function(output)
+                                    if output is None or len(output) == 0:
+                                        continue
+                                await self.send_to_app(output)
+                                if self._callback:
+                                    self._callback(output)
+                    else:
+                        output = await self.llm_engine.generate_text(self._user, config.llm.model)
                         if output:
-                            if not got_response:
-                                got_response = True
-                                self.clear_tts_msg_queue()
+                            self.clear_tts_msg_queue()
                             if config.llm.enable_custom_functions:
                                 output = self.llm_engine.parse_custom_function(output)
-                                if output is None or len(output) == 0:
-                                    continue
                             await self.send_to_app(output)
                             if self._callback:
                                 self._callback(output)

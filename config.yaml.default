@@ -28,14 +28,15 @@ agents:
   log_debug: True
 
 llm:
-  engine: "QWEN"  # CHATGPT QWEN
-  model: "qwen-max" #chagpt: gpt-3.5-turbo-0125 gpt-4-0125-preview ;  qwen: qwen-max 
+  engine: "QWEN"  # CHATGPT QWEN qwen_local
+  model: "qwen-max" #chagpt: gpt-3.5-turbo-0125 gpt-4-0125-preview ;  qwen: qwen-max ; qwen_local: Qwen/Qwen1.5-7B-Chat-AWQ 
   location: "cn"
   vl_engine: "qwen"
   vl_model: "qwen-vl-plus" # qwen-vl-plus qwen-vl-max
   vl_cmd_catch_pic: "开始拍照"
   enable_openai_functions: False
   enable_custom_functions: True
+  custom_functios_output_use_json: False
   chat_history_count: 20
   chat_history_time_limit: 600
   tts: "azure"  # azure vits
@@ -43,6 +44,7 @@ llm:
   vits_url: "http://192.168.17.141:9880/"
   split_skip_comma: False
   split_min_length: 10
+  cache_root: "E:\dp\cache"
 
 api:
   www_root: "/var/www/html/"

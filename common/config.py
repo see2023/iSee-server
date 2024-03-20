@@ -76,6 +76,7 @@ class LLMConfig:
             vl_model: str,
             enable_openai_functions: bool,
             enable_custom_functions: bool,
+            custom_functios_output_use_json: bool,
             vl_cmd_catch_pic: str,
             chat_history_count: int,
             chat_history_time_limit: int,
@@ -84,6 +85,7 @@ class LLMConfig:
             vits_url: str,
             split_skip_comma: bool,
             split_min_length: int,
+            cache_root:str,
     ):
         self.engine = engine.lower()
         self.model = model.lower()
@@ -92,6 +94,7 @@ class LLMConfig:
         self.vl_model = vl_model.lower()
         self.enable_openai_functions = enable_openai_functions
         self.enable_custom_functions = enable_custom_functions
+        self.custom_functios_output_use_json = custom_functios_output_use_json
         self.vl_cmd_catch_pic = vl_cmd_catch_pic
         self.chat_history_count = chat_history_count
         self.chat_history_time_limit = chat_history_time_limit
@@ -100,6 +103,7 @@ class LLMConfig:
         self.vits_url = vits_url
         self.split_skip_comma = split_skip_comma
         self.split_min_length = split_min_length
+        self.cache_root = cache_root
 
 
     @classmethod
