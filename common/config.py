@@ -88,7 +88,7 @@ class LLMConfig:
             cache_root:str,
     ):
         self.engine = engine.lower()
-        self.model = model.lower()
+        self.model = model
         self.location = location
         self.vl_engine = vl_engine.lower()
         self.vl_model = vl_model.lower()
