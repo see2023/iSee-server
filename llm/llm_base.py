@@ -278,6 +278,9 @@ class LLMBase:
     async def save_message_to_redis(self, user_id: str, content: str, role: MessageRole = MessageRole.assistant):
         stream_key = REDIS_CHAT_KEY+user_id
         srcname = CHAT_MEMBER_APP if role == MessageRole.user else CHAT_MEMBER_ASSITANT
+        if content is None or len(content) == 0:
+            logging.info("Empty message, ignore saving to redis")
+            return
         # try:
         await write_chat_to_redis(stream_key, text=content, timestamp=time.time(), srcname=srcname)
         logging.debug(f"Saved message to redis: {content}")
@@ -311,6 +314,7 @@ class LLMBase:
                     logging.warning(f"Invalid custom function output json text: {text}")
                     return text
             except Exception as e:
+                self._fn_output = text
                 logging.error(f"Failed to parse custom function json: {e}")  
                 return text
         text = text.strip()
