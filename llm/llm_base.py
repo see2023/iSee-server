@@ -312,6 +312,7 @@ class LLMBase:
                     return text
             except Exception as e:
                 logging.error(f"Failed to parse custom function json: {e}")  
+                return text
         text = text.strip()
         lines = text.split("\n")
         new_lines = []
@@ -334,7 +335,7 @@ class LLMBase:
                 return ''
             elif text.startswith("Args:"):
                 self._fn_args = text[5:].strip()
-                return ''
+                break
             elif self._fn_name  == "":
                 new_lines.append(line)
             else:
@@ -363,13 +364,14 @@ class LLMBase:
                     async for output in self.generate_text_streamed(self._user,  model=self._model, use_redis_history=False):
                         logging.info(f"after custom function, llm stream output: {output}")
                         output_all += output
-                        if output_callback_func:
-                            await output_callback_func(output)
                 else:
                     output_all = await self.generate_text(self._user,  model=self._model, use_redis_history=False)
                     logging.info(f"after custom function, llm output: {output_all}")
-                    if output_callback_func:
-                        await output_callback_func(output_all)
+                if config.llm.enable_custom_functions:
+                    # 仍然用工具解析一下，反正过拟合输出json格式
+                    output_all = self.parse_custom_function(output_all)
+                if output_callback_func:
+                    await output_callback_func(output)
                 await self.save_message_to_redis(self._user, output_all)
             elif next_step == ToolActions.VLLM:
                 if cmd_callback_func:
