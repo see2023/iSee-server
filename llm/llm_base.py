@@ -371,7 +371,7 @@ class LLMBase:
                     # 仍然用工具解析一下，反正过拟合输出json格式
                     output_all = self.parse_custom_function(output_all)
                 if output_callback_func:
-                    await output_callback_func(output)
+                    await output_callback_func(output_all)
                 await self.save_message_to_redis(self._user, output_all)
             elif next_step == ToolActions.VLLM:
                 if cmd_callback_func:
