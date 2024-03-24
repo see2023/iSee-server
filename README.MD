@@ -1,9 +1,10 @@
 # Demo 
 
 * [视频效果](https://www.bilibili.com/video/BV1s4421F7Hn/?vd_source=404c3b2266008e965fbdc06a4f0b001e)
+* [GPT-SoVITS 表情测试](https://www.bilibili.com/video/BV1GD42177B9/)
 
 
-<img src="./doc/info.jpeg"  height="480" >
+<img src="./doc/info2.jpg"  height="480" >
 
 文档整理中，敬请期待
 
