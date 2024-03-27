@@ -15,7 +15,6 @@ from db.redis_cli import get_redis_client, REDIS_CHAT_KEY, REDIS_PREFIX, write_c
 from dotenv import load_dotenv
 load_dotenv(override=True)
 from common.config import config
-
 from livekit import agents, rtc
 from livekit.plugins import openai 
 from detect.yolov8 import YoloV8Detector
@@ -23,8 +22,9 @@ from vad import VAD
 import matplotlib.pyplot as plt
 from PIL import ImageDraw, ImageFont, Image
 import matplotlib
-from llm.llm_base import LLMBase, VisualLLMBase
+from llm.llm_base import LLMBase, VisualLLMBase, KEEP_SILENT_RESPONSE
 from control.simple_control import SimpleControl, Command
+from agents.speaker import Speaker
 font_path = "/Library/Fonts/Arial Unicode.ttf" if sys.platform == "darwin" else "arial.ttf"
 font_size = 40
 font = ImageFont.truetype(font_path, font_size)
@@ -50,6 +50,10 @@ class ModelManager: # singleton
     
     def __init__(self):
         self._prompt = "你好！你吃饭了吗？吃过了，谢谢。"
+        if config.agents.speaker_distance_threshold> 0:
+            self.speaker_detector = Speaker(speaker_distance_threshold=config.agents.speaker_distance_threshold, min_chunk_duration=config.agents.min_chunk_duration)
+        else:
+            self.speaker_detector = None
         stt_type  = config.agents.stt_type
         if self._instance is not None:
             raise Exception('This is a singleton class, use get_instance() instead')
@@ -65,7 +69,7 @@ class ModelManager: # singleton
             self.stt_model = fast_whisper_stt.STT( use_fast_whisper=True, language="zh", model_size_or_path="large-v3", device="cuda", 
                                                             compute_type="default", beam_size=5, initial_prompt=self._prompt)
         elif stt_type == "xf_api":
-            self.stt_model = xf_stt.STT()
+            self.stt_model = xf_stt.STT(speaker_detector=self.speaker_detector)
         else:
             raise Exception("invalid whisper type: {}".format(stt_type))
         self.detector = YoloV8Detector()
@@ -74,7 +78,7 @@ class ModelManager: # singleton
 
 def get_model():
     model_manager = ModelManager.get_instance()
-    return model_manager.stt_model, model_manager.detector, model_manager.vad
+    return model_manager.stt_model, model_manager.detector, model_manager.vad, model_manager.speaker_detector
 
 class LiveAgent:
     @classmethod
@@ -85,7 +89,7 @@ class LiveAgent:
     def __init__(self, ctx: agents.JobContext):
         # plugins
 
-        self.stt_model, self.detector, self.vad = get_model() 
+        self.stt_model, self.detector, self.vad, self.speaker_detector = get_model() 
         self.catch_follow_pos = False
         self.motion_control = SimpleControl(self.detector)
 
@@ -169,6 +173,8 @@ class LiveAgent:
         self.chat.on("message_received", on_message)
 
     async def send_to_app(self, msg: str):
+        if msg == KEEP_SILENT_RESPONSE:
+            return
         logging.info("sending message to app: %s", msg)
         await self.chat.send_message(
             message=msg, srcname=chat_ext.CHAT_MEMBER_ASSITANT, timestamp=time.time(),
@@ -388,8 +394,8 @@ class LiveAgent:
                 frame = frame.remix_and_resample(16000, 1)
             stt_stream.push_frame(frame)
             frame_count += 1
-            if frame_count % 500 == 0:
-                logger.info("audio track worker received frame")
+            if frame_count == 1:
+                logger.info("audio track worker receive first frame")
         await stt_stream.flush()
         logging.info("audio track worker done")
 
@@ -405,7 +411,7 @@ class LiveAgent:
                 continue
             speech: agents.stt.SpeechData = event.alternatives[0]
             duration = speech.end_time - speech.start_time
-            logging.info("received speech from stt_stream: %s, duration: %.3fs", speech.text, duration)
+            logging.info(f"received speech from stt_stream: {speech.text}, duration: {duration}, speaker_id: {speech.speaker_id}")
             cmd_str = LLMBase.remove_last_punctuation(speech.text).lower()
             if cmd_str ==  config.common.motion_mode_start_cmd:
                 self.catch_follow_pos = True
@@ -426,6 +432,9 @@ class LiveAgent:
                     logging.error("error stopping motion control: %s", e)
                 self.catch_follow_pos = False
                 continue
+
+            if speech.speaker_id is not None and speech.speaker_id > 0:
+                speech.text = f"[speaker_{speech.speaker_id}] {speech.text}"
 
             await write_chat_to_redis(self.stream_key, text=speech.text, timestamp=speech.start_time, duration=duration, language=speech.language, srcname=chat_ext.CHAT_MEMBER_APP)
             await self.chat.send_message(

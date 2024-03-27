@@ -43,8 +43,21 @@ SYSTEM_PROMPTS = {
     Tool:Search
     Args:xx天气预报。
     如果不需要使用工具，请直接回复内容，不需要Reasons, Tool和Args。 
-    """
+    """,
+    "speaker" : '''
+    当前对话可能有多人参与，如果检测到说话人，内容会以 speaker_1 speaker_2 的形式开头。
+    此时，如果你觉得本轮对话不需要参与回复，请答复内容： keep_silent. 比如：
+    user: [speaker_1] 爸爸，你吃饭了吗？
+    assistant:  keep_silent
+    user: [speaker_2] 啊，这个..
+    assistant:  keep_silent
+    user: [speaker_2] 吃了，我吃了三大碗米饭.
+    assistant:  吃这么多可不好哦, 要多吃点蔬菜.
+
+    '''
 }
+
+KEEP_SILENT_RESPONSE = "keep_silent"
 
 class LLMBase:
     def __init__(self, app_secret_env_var_name: str=None, app_id_env_var_name: str=None, message_capacity:int=6000, history_count: int = 0, stream_support: bool = True):
@@ -75,6 +88,8 @@ class LLMBase:
         self._max_interactions = 3
         self._stream_support = stream_support
         self._custom_tool_prompt:str = None
+        if config.agents.speaker_distance_threshold>0:
+            self.set_custom_tool_prompt(SYSTEM_PROMPTS['speaker'])
     
     def stream_support(self) -> bool:
         return self._stream_support

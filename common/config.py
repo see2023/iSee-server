@@ -43,6 +43,9 @@ class AgentsConfig:
             log_debug: bool,
             vad_asume_speech_min_prob: float,
             vad_asume_speech_max_count: int,
+            speaker_distance_threshold: float,
+            min_chunk_duration: float,
+            speaker_write_wav: bool,
     ):
         self.show_detected_results = show_detected_results
         self.yolo_verbose = yolo_verbose
@@ -61,6 +64,9 @@ class AgentsConfig:
         self.log_debug = log_debug
         self.vad_asume_speech_min_prob = vad_asume_speech_min_prob
         self.vad_asume_speech_max_count = vad_asume_speech_max_count
+        self.speaker_distance_threshold = speaker_distance_threshold
+        self.min_chunk_duration = min_chunk_duration
+        self.speaker_write_wav = speaker_write_wav
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, any]):

@@ -17,6 +17,8 @@ import os
 from wsgiref.handlers import format_date_time
 from datetime import datetime
 from time import mktime
+from stt_base import MySpeechData
+from speaker import Speaker
 
 STATUS_FIRST_FRAME = 0 
 STATUS_CONTINUE_FRAME = 1
@@ -58,9 +60,10 @@ class Ws_Param(object):
 
 
 class STT(stt.STT):
-    def __init__(self, *, streaming_supported: bool = False) -> None:
+    def __init__(self, *, streaming_supported: bool = False, speaker_detector: Speaker = None) -> None:
         super().__init__(streaming_supported=streaming_supported)
         self.wsParam = Ws_Param(os.getenv('XF_APPID'), os.getenv('XF_API_KEY'), os.getenv('XF_API_SECRET'))
+        self.speaker_detector:Speaker = speaker_detector
 
     def parse_message(self, message) -> str:
         try:
@@ -149,18 +152,28 @@ class STT(stt.STT):
         buffer: rtc.AudioFrame = agents.utils.merge_frames(buffer)
         duration = len(buffer.data) / buffer.sample_rate
         wsUrl = self.wsParam.create_url()
-        
-        try:
-            async with websockets.connect(wsUrl, close_timeout=0.005) as websocket:
-                await self.send_audio(websocket, buffer)
-                message = await websocket.recv()
-                result = self.parse_message(message)
-                logging.info("xf recognize result:%s" % result)
-                now = time.time()
-                speechData = stt.SpeechData(language=language or "zh", text=result, start_time=now-duration, end_time=now)
-                await websocket.close()
-                return stt.SpeechEvent(is_final=True, alternatives=[speechData])
-        except Exception as e:
-            logging.error("xf recognize exception:", e)
-            return stt.SpeechEvent(is_final=True, alternatives=[])
+        now = time.time()
+        speechData = MySpeechData(language=language or "zh", text='', start_time=now-duration, end_time=now)
+
+        tasks = []
+        async def xf_stt():
+            try:
+                async with websockets.connect(wsUrl, close_timeout=0.005) as websocket:
+                    await self.send_audio(websocket, buffer)
+                    message = await websocket.recv()
+                    speechData.text = self.parse_message(message)
+                    logging.info("xf recognize result:%s" % speechData.text)
+                    await websocket.close()
+            except Exception as e:
+                logging.error("xf recognize exception:", e)
+                return stt.SpeechEvent(is_final=True, alternatives=[])
+        async def speaker_detect():
+            if self.speaker_detector:
+                speaker_id = await self.speaker_detector.get_speakerid_from_buffer_async(buffer.data, buffer.sample_rate)
+                speechData.speaker_id = speaker_id
+        tasks.append(xf_stt())
+        if self.speaker_detector:
+            tasks.append(speaker_detect())
+        await asyncio.gather(*tasks)
+        return stt.SpeechEvent(is_final=True, alternatives=[speechData])
     

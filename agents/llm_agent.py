@@ -8,6 +8,7 @@ import redis
 from db.redis_cli import get_redis_client, REDIS_CHAT_KEY, REDIS_PREFIX, REDIS_MQ_KEY
 from agents.chat_ext import CHAT_MEMBER_APP, CHAT_MEMBER_ASSITANT,ChatExtManager, ChatExtMessage
 from llm import get_llm, get_vl_LLM, LLMBase, VisualLLMBase
+from llm.llm_base import KEEP_SILENT_RESPONSE
 from llm.llm_tools import Tools, ToolNames, ToolActions
 from typing import Callable
 from livekit import rtc
@@ -157,6 +158,8 @@ class MessageConsumer():
     async def send_to_app(self, msg: str):
         if not self._chat:
             logging.error("No chat manager found, cannot send message to app")
+            return
+        if msg == KEEP_SILENT_RESPONSE:
             return
         chat_msg:ChatExtMessage = await self._chat.send_message(
             message=msg, srcname=CHAT_MEMBER_ASSITANT, timestamp=time.time(),

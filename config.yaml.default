@@ -25,6 +25,9 @@ agents:
   vad_threshold: 0.5
   vad_asume_speech_min_prob: 0.05
   vad_asume_speech_max_count: 5
+  speaker_distance_threshold: 0.3
+  speaker_write_wav: False
+  min_chunk_duration: 3
   log_debug: True
 
 llm:
