@@ -25,8 +25,22 @@ def getToken(room_name, id, name):
     ))
   return token.to_jwt()
 
+loop = asyncio.get_event_loop()
+
+def sync_authenticate_request(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        try:
+            # 使用全局事件循环运行异步任务
+            result = loop.run_until_complete(authenticate_request(f)(*args, **kwargs))
+            return result
+        except Exception as e:
+            print(f"Error occurred: {e}")
+            return {"error": str(e)}, 500
+    return decorated_function
+
 @live_bp.route('/getToken', methods=['POST'])
-@authenticate_request
+@sync_authenticate_request
 def post_message():
     data = request.get_json()
     room_name = data.get('room')
@@ -43,17 +57,6 @@ def post_message():
     response = {'status': True, 'text': token}
     return jsonify(response)
 
-def sync_authenticate_request(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            result = loop.run_until_complete(authenticate_request(f)(*args, **kwargs))
-            return result
-        finally:
-            loop.close()
-    return decorated_function
 
 @live_bp.route('/putImg', methods=['POST'])
 @sync_authenticate_request
