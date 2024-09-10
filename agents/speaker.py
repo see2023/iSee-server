@@ -13,6 +13,7 @@ import datetime
 from dataclasses import dataclass
 from typing import List, Dict
 from common.config import config
+from collections import deque
 
 
 @dataclass
@@ -32,6 +33,8 @@ class SpeakerEmbeddings:
     def __init__(self, id:int):
         self.id = id
         self.embeddings = []
+        self.historical_distances = deque(maxlen=10)  # 保存最近10个距离值
+        self.adaptive_threshold = 0.25  # 初始阈值，将随时间调整
 
     def add_embedding(self,  duration:float, embedding:np.ndarray):
         if len(self.embeddings) < self.max_embeddings:
@@ -74,19 +77,34 @@ class SpeakerEmbeddings:
         return self.average_embedding
     
     # 判断是否是同一个人的声音，如果是，则判断距离来更新embeddings
-    def is_same_speaker(self, embedding:np.ndarray, threshold:float = 0.25, duration:float = 0.0):
+    def is_same_speaker(self, embedding:np.ndarray, base_threshold:float = 0.25, duration:float = 0.0):
         if self.average_embedding is None or duration < 0.1:
             return False, None
+        
         distance = cdist(self.average_embedding, embedding, metric="cosine")[0,0]
-        if duration<5:
-            # 对于短音频，将threshold按 时长与 5 的差距，线性差值到1.5倍
-            threshold = threshold * ( 1 + 0.5 * (5 - duration)/(5 - config.agents.min_chunk_duration) )
-        logging.debug(f"debug --- Distance between new embedding and average embedding for speaker {self.id}: {distance:.4f}, threshold: {threshold:.4f}, audio duration: {duration:.2f} seconds")
-        if distance < threshold: 
+        
+        # 动态阈值调整
+        duration_factor = 1 + max(0, (5 - duration) / (5 - config.agents.min_chunk_duration)) * 0.5
+        current_threshold = self.adaptive_threshold * duration_factor
+        
+        # 使用历史距离进行判断
+        avg_historical = np.mean(self.historical_distances) if self.historical_distances else current_threshold
+        std_historical = np.std(self.historical_distances) if len(self.historical_distances) > 1 else current_threshold * 0.1
+        
+        is_same = (distance < current_threshold or 
+                   distance < avg_historical + std_historical)
+        
+        logging.debug(f"Speaker {self.id} - Distance: {distance:.4f}, Threshold: {current_threshold:.4f}, "
+                      f"Avg Historical: {avg_historical:.4f}, Std Historical: {std_historical:.4f}, "
+                      f"Duration: {duration:.2f}s, Is Same: {is_same}")
+        
+        if is_same:
             self.add_embedding(duration, embedding)
-            return True, distance
-        else:
-            return False, distance
+            self.historical_distances.append(distance)
+            # 更新自适应阈值
+            self.adaptive_threshold = (self.adaptive_threshold * 0.9 + distance * 0.1)
+        
+        return is_same, distance
     
 # https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM
 class Speaker:
@@ -104,6 +122,7 @@ class Speaker:
         self.max_chunk_duration = max_chunk_duration
         self.speakers: Dict[int, SpeakerEmbeddings] = {}
         self.last_speaker_id = 0
+        self.recent_speakers = deque(maxlen=5)  # 保存最近识别的5个说话人ID
 
     def get_embedding_by_file(self, file_path:str) -> np.ndarray:
         embedding = self.inference(file_path)
@@ -141,26 +160,44 @@ class Speaker:
             total_duration = len(buf) / sample_rate
             if new_embedding is None:
                 return 0
-            # check if self.speakers is empty
-            if not self.speakers or len(self.speakers) == 0:
-                self.last_speaker_id = 1
-                self.speakers[self.last_speaker_id] = SpeakerEmbeddings(self.last_speaker_id)
-                self.speakers[self.last_speaker_id].add_embedding(total_duration, new_embedding)
-                logging.info(f"First speaker added with id: {self.last_speaker_id}, audio duration: {total_duration:.3f} seconds")
-                return self.last_speaker_id
+
+            if not self.speakers:
+                return self._add_new_speaker(new_embedding, total_duration)
+
+            # 首先检查最近的说话人
+            for speaker_id in self.recent_speakers:
+                rt, distance = self.speakers[speaker_id].is_same_speaker(new_embedding, self.speaker_distance_threshold, total_duration)
+                if rt:
+                    self._update_recent_speakers(speaker_id)
+                    logging.info(f"Recent speaker found with id: {speaker_id}, time: {time.time() - start_time:.4f}s, distance: {distance:.4f}, duration: {total_duration:.3f}s")
+                    return speaker_id
+
+            # 如果最近的说话人中没有匹配，检查所有说话人
             for speaker_id, speaker_embedding in self.speakers.items():
                 rt, distance = speaker_embedding.is_same_speaker(new_embedding, self.speaker_distance_threshold, total_duration)
                 if rt:
-                    logging.info(f"Speaker found with id: {speaker_id}, time taken: {time.time() - start_time:.4f} seconds, min_distance: {distance:.4f}, audio duration: {total_duration:.3f} seconds")
+                    self._update_recent_speakers(speaker_id)
+                    logging.info(f"Speaker found with id: {speaker_id}, time: {time.time() - start_time:.4f}s, distance: {distance:.4f}, duration: {total_duration:.3f}s")
                     return speaker_id
-            self.last_speaker_id += 1
-            self.speakers[self.last_speaker_id] = SpeakerEmbeddings(self.last_speaker_id)
-            self.speakers[self.last_speaker_id].add_embedding(total_duration, new_embedding)
-            logging.debug(f"New speaker added with id: {self.last_speaker_id}, time taken: {time.time() - start_time:.4f} seconds, audio duration: {total_duration:.3f} seconds")
-            return self.last_speaker_id
+
+            return self._add_new_speaker(new_embedding, total_duration)
+
         except Exception as e:
             logging.error(f"Error getting speaker id from buffer: {e}")
             return 0
+
+    def _add_new_speaker(self, embedding, duration):
+        self.last_speaker_id += 1
+        self.speakers[self.last_speaker_id] = SpeakerEmbeddings(self.last_speaker_id)
+        self.speakers[self.last_speaker_id].add_embedding(duration, embedding)
+        self._update_recent_speakers(self.last_speaker_id)
+        logging.debug(f"New speaker added with id: {self.last_speaker_id}, duration: {duration:.3f}s")
+        return self.last_speaker_id
+
+    def _update_recent_speakers(self, speaker_id):
+        if speaker_id in self.recent_speakers:
+            self.recent_speakers.remove(speaker_id)
+        self.recent_speakers.appendleft(speaker_id)
 
     async def get_speakerid_from_buffer_async(self, buf, sample_rate:int):
         return await asyncio.get_event_loop().run_in_executor(None, self.get_speakerid_from_buffer, buf, sample_rate)

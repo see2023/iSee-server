@@ -5,6 +5,8 @@ import random
 from livekit import api
 import datetime
 import base64
+import asyncio
+from functools import wraps
 
 from auth import authenticate_request
 from live import live_bp
@@ -41,9 +43,20 @@ def post_message():
     response = {'status': True, 'text': token}
     return jsonify(response)
 
+def sync_authenticate_request(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(authenticate_request(f)(*args, **kwargs))
+            return result
+        finally:
+            loop.close()
+    return decorated_function
 
 @live_bp.route('/putImg', methods=['POST'])
-@authenticate_request
+@sync_authenticate_request
 def put_img():
     data = request.get_json()
     img_content_str: str = data.get('text')
