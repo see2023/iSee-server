@@ -30,11 +30,11 @@ class SpeakerEmbeddings:
     average_distance:float = 0.0
     id:int = 0
 
-    def __init__(self, id:int):
+    def __init__(self, id:int, adaptive_threshold:float = 0.25):
         self.id = id
         self.embeddings = []
         self.historical_distances = deque(maxlen=10)  # 保存最近10个距离值
-        self.adaptive_threshold = 0.25  # 初始阈值，将随时间调整
+        self.adaptive_threshold = adaptive_threshold
 
     def add_embedding(self,  duration:float, embedding:np.ndarray):
         if len(self.embeddings) < self.max_embeddings:
@@ -188,7 +188,7 @@ class Speaker:
 
     def _add_new_speaker(self, embedding, duration):
         self.last_speaker_id += 1
-        self.speakers[self.last_speaker_id] = SpeakerEmbeddings(self.last_speaker_id)
+        self.speakers[self.last_speaker_id] = SpeakerEmbeddings(self.last_speaker_id, self.speaker_distance_threshold)
         self.speakers[self.last_speaker_id].add_embedding(duration, embedding)
         self._update_recent_speakers(self.last_speaker_id)
         logging.debug(f"New speaker added with id: {self.last_speaker_id}, duration: {duration:.3f}s")
