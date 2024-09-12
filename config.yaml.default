@@ -14,15 +14,15 @@ agents:
   # device: cpu  cuda mps
   yolo_device: "mps"
   yolo_frame_interval: 0.5
-  stt_type: "whisper_api" # whisper_api local_whisper_original local_whisper_fast xf_api
+  stt_type: "whisper_api" # whisper_api local_whisper_original local_whisper_fast xf_api sense_voice_small
   max_buffered_speech: 15
   enable_audio: True
   enable_video: True
   vision_lang_interval: 0
   send_vl_result: True
   min_silence_duration: 0.5
-  min_speaking_duration: 0.5
-  vad_threshold: 0.5
+  min_speaking_duration: 0.3
+  vad_threshold: 0.2
   vad_asume_speech_min_prob: 0.05
   vad_asume_speech_max_count: 5
   speaker_distance_threshold: 0.3
@@ -32,7 +32,7 @@ agents:
 
 llm:
   engine: "QWEN"  # CHATGPT QWEN qwen_local
-  model: "qwen-max" #chagpt: gpt-3.5-turbo-0125 gpt-4-0125-preview ;  qwen: qwen-max ; qwen_local: Qwen/Qwen1.5-7B-Chat-AWQ 
+  model: "gpt-4o-mini" #chagpt: chatgpt-4o-latest gpt-4o-mini;  qwen: qwen-max qwen-plus; qwen_local: Qwen/Qwen2-7B-Instruct
   location: "cn"
   vl_engine: "qwen"
   vl_model: "qwen-vl-plus" # qwen-vl-plus qwen-vl-max

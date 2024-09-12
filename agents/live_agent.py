@@ -5,6 +5,7 @@ import os
 import numpy as np
 import fast_whisper_stt
 import xf_stt
+import sense_voice
 import chat_ext
 import sys
 import time
@@ -70,6 +71,8 @@ class ModelManager: # singleton
                                                             compute_type="default", beam_size=5, initial_prompt=self._prompt)
         elif stt_type == "xf_api":
             self.stt_model = xf_stt.STT(speaker_detector=self.speaker_detector)
+        elif stt_type == "sense_voice_small":
+            self.stt_model = sense_voice.SenseVoiceSTT(speaker_detector=self.speaker_detector)
         else:
             raise Exception("invalid whisper type: {}".format(stt_type))
         self.detector = YoloV8Detector()
@@ -451,7 +454,7 @@ class LiveAgent:
 if __name__ == "__main__":
     # logging.basicConfig(level=logging.INFO)
 
-    logger.info("starting live agent")
+    logger.warning("starting live agent")
     logger.info('_____________ %s', Command.ACCELERATE)
 
     async def job_request_cb(job_request: agents.JobRequest):

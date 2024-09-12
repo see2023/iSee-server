@@ -39,6 +39,8 @@ class VAD(agents.vad.VAD):
                 repo_or_dir="snakers4/silero-vad",
                 model="silero_vad",
                 onnx=use_onnx,
+                force_reload=False,
+                skip_validation=True,
             )
         self._model = model
 

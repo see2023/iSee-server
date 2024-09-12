@@ -17,3 +17,5 @@ cnlunar
 langchain_core
 azure-cognitiveservices-speech
 msgpack
+funasr
+funasr-onnx

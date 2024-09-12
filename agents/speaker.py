@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from typing import List, Dict
 from common.config import config
 from collections import deque
+from agents_tools import memoryview_to_tensor
+
 
 
 @dataclass
@@ -144,10 +146,7 @@ class Speaker:
                 wav.setframerate(sample_rate)
                 wav.writeframes(buf)
             logging.debug(f"Saved buffer to {wave_file}")
-        audio_data = np.frombuffer(buf, dtype=np.int16)
-        audio_data = audio_data.astype(np.float32) / 32768.0
-        audio_data = audio_data.reshape(1, -1)
-        audio_tensor = torch.from_numpy(audio_data)
+        audio_tensor = memoryview_to_tensor(buf, is_2d=True)
         seg = Segment(0, min(total_duration, self.max_chunk_duration))
         embedding = self.inference.crop({"waveform": audio_tensor, "sample_rate": sample_rate}, chunk=seg)
         embedding = embedding.reshape(1, -1)
