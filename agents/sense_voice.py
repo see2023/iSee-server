@@ -8,20 +8,22 @@ import time
 import asyncio
 from stt_base import MySpeechData
 from speaker import Speaker
-from agents_tools import memoryview_to_tensor
-# import numpy as np
-# from funasr_onnx import SenseVoiceSmall
+from agents_tools import memoryview_to_tensor, memoryview_to_ndarray
+from funasr_onnx import SenseVoiceSmall
 from funasr import AutoModel
 from funasr_onnx.utils.postprocess_utils import rich_transcription_postprocess
 
 class SenseVoiceSTT(stt.STT):
-    def __init__(self, *, streaming_supported: bool = False, speaker_detector: Speaker = None) -> None:
+    def __init__(self, *, streaming_supported: bool = False, speaker_detector: Speaker = None, use_onnx: bool = False) -> None:
         super().__init__(streaming_supported=streaming_supported)
         self.speaker_detector:Speaker = speaker_detector
+        self.use_onnx = use_onnx
 
         model_dir = "iic/SenseVoiceSmall"
-        # self.model = SenseVoiceSmall(model_dir, batch_size=10, quantize=False)
-        self.model = AutoModel(model=model_dir, trust_remote_code=False, disable_update=True)
+        if self.use_onnx:
+            self.model = SenseVoiceSmall(model_dir, batch_size=10, quantize=False)
+        else:
+            self.model = AutoModel(model=model_dir, trust_remote_code=False, disable_update=True)
         logging.info("sense_voice stt init success")
     
     @classmethod
@@ -45,17 +47,21 @@ class SenseVoiceSTT(stt.STT):
         tasks = []
         async def sencevoice_stt():
             try:
-                # res = self.model(np.frombuffer(buffer.data, dtype=np.int16), language="auto", use_itn=True)
 
                 # expected Tensor as element 0 in argument 0, but got memoryview
-                input = memoryview_to_tensor(buffer.data)
-                res = self.model.generate(
-                    input=input,
-                    cache={},
-                    language="auto", # "zn", "en", "yue", "ja", "ko", "nospeech"
-                    use_itn=True,
-                )
-                speechData.text = rich_transcription_postprocess(res[0]["text"])
+                if self.use_onnx:
+                    input = memoryview_to_ndarray(buffer.data)
+                    res = self.model(input, language="auto", use_itn=True)
+                    speechData.text = rich_transcription_postprocess(res[0])
+                else:
+                    input = memoryview_to_tensor(buffer.data)
+                    res = self.model.generate(
+                        input=input,
+                        cache={},
+                        language="auto", # "zn", "en", "yue", "ja", "ko", "nospeech", "auto"
+                        use_itn=True,
+                    )
+                    speechData.text = rich_transcription_postprocess(res[0]["text"])
                 logging.info("sense_voice recognize result:%s" % speechData.text)
             except Exception as e:
                 logging.error("sense_voice recognize exception:", e)

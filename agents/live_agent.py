@@ -31,11 +31,11 @@ font_size = 40
 font = ImageFont.truetype(font_path, font_size)
 
 logging.basicConfig(
-    level=logging.DEBUG if config.agents.log_debug else logging.INFO,
     format='%(asctime)s - %(levelname)s [in %(pathname)s:%(lineno)d] - %(message)s',
 )
-logging.getLogger("websockets").setLevel(logging.ERROR)
 logger = logging.getLogger()
+logger.setLevel(logging.DEBUG if config.agents.log_debug else logging.INFO)
+logging.getLogger("websockets").setLevel(logging.ERROR)
 
 
 
@@ -414,7 +414,8 @@ class LiveAgent:
                 continue
             speech: agents.stt.SpeechData = event.alternatives[0]
             duration = speech.end_time - speech.start_time
-            logging.info(f"received speech from stt_stream: {speech.text}, duration: {duration}, speaker_id: {speech.speaker_id}")
+            speaker_id = getattr(speech, 'speaker_id', None)
+            logging.info(f"received speech from stt_stream: {speech.text}, duration: {duration}, speaker_id: {speaker_id}")
             cmd_str = LLMBase.remove_last_punctuation(speech.text).lower()
             if cmd_str ==  config.common.motion_mode_start_cmd:
                 self.catch_follow_pos = True
@@ -436,8 +437,8 @@ class LiveAgent:
                 self.catch_follow_pos = False
                 continue
 
-            if speech.speaker_id is not None and speech.speaker_id > 0:
-                speech.text = f"[speaker_{speech.speaker_id}] {speech.text}"
+            if speaker_id is not None and speaker_id > 0:
+                speech.text = f"[speaker_{speaker_id}] {speech.text}"
 
             await write_chat_to_redis(self.stream_key, text=speech.text, timestamp=speech.start_time, duration=duration, language=speech.language, srcname=chat_ext.CHAT_MEMBER_APP)
             await self.chat.send_message(
@@ -452,10 +453,8 @@ class LiveAgent:
 
 
 if __name__ == "__main__":
-    # logging.basicConfig(level=logging.INFO)
 
-    logger.warning("starting live agent")
-    logger.info('_____________ %s', Command.ACCELERATE)
+    logger.info("starting live agent")
 
     async def job_request_cb(job_request: agents.JobRequest):
         logger.info("Accepting job for live")

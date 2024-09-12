@@ -12,3 +12,9 @@ def memoryview_to_tensor(buf,  is_2d=False):
     else:
         audio_tensor = torch.from_numpy(audio_data)
     return audio_tensor
+
+#from memoryview to np.ndarray
+def memoryview_to_ndarray(buf):
+    audio_data = np.frombuffer(buf, dtype=np.int16)
+    audio_data = audio_data.astype(np.float32) / 32768.0
+    return audio_data
