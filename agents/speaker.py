@@ -5,6 +5,8 @@ import torch
 import numpy as np
 from pyannote.audio import Model, Inference
 from pyannote.core import Segment
+from funasr.models.campplus.model import CAMPPlus
+from huggingface_hub import hf_hub_download
 from scipy.spatial.distance import cdist
 import asyncio
 import logging
@@ -14,7 +16,7 @@ from dataclasses import dataclass
 from typing import List, Dict
 from common.config import config
 from collections import deque
-from agents_tools import memoryview_to_tensor
+from agents_tools import memoryview_to_tensor, memoryview_to_ndarray
 
 
 
@@ -110,15 +112,24 @@ class SpeakerEmbeddings:
     
 # https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM
 class Speaker:
-    def __init__(self, device:str = "cpu", speaker_distance_threshold:float = 0.25, min_chunk_duration:float = 3.0, max_chunk_duration:float = 20.0):
+    def __init__(self, device:str = "cpu", speaker_distance_threshold:float = 0.25, min_chunk_duration:float = 3.0, max_chunk_duration:float = 20.0, use_campplus:bool = True):
         self.device = torch.device(device)
+        self.use_campplus = use_campplus
         try:
-            self.model = Model.from_pretrained("pyannote/wespeaker-voxceleb-resnet34-LM")
+            if use_campplus:
+                self.model = CAMPPlus()
+                # load from https://huggingface.co/funasr/campplus/blob/main/campplus_cn_common.bin
+                model_path = hf_hub_download(repo_id="funasr/campplus", filename="campplus_cn_common.bin")
+                self.model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+                self.model.to(self.device)
+                self.model.eval()
+            else:
+                self.model = Model.from_pretrained("pyannote/wespeaker-voxceleb-resnet34-LM")
+                self.inference = Inference(self.model, window="whole")
+                self.inference.to(self.device)
         except Exception as e:
             logging.error(f"Error loading pyannote/wespeaker-voxceleb-resnet34-LM model: {e}")
             exit()
-        self.inference = Inference(self.model, window="whole")
-        self.inference.to(self.device)
         self.speaker_distance_threshold = speaker_distance_threshold
         self.min_chunk_duration = min_chunk_duration
         self.max_chunk_duration = max_chunk_duration
@@ -127,8 +138,11 @@ class Speaker:
         self.recent_speakers = deque(maxlen=5)  # 保存最近识别的5个说话人ID
 
     def get_embedding_by_file(self, file_path:str) -> np.ndarray:
-        embedding = self.inference(file_path)
-        # numpy.ndarray (float32,256)
+        if self.use_campplus:
+            embedding = self.model.inference(file_path)
+        else:
+            embedding = self.inference(file_path)
+            # numpy.ndarray (float32,256)
         embedding = embedding.reshape(1, -1)
         return embedding
     
@@ -146,9 +160,17 @@ class Speaker:
                 wav.setframerate(sample_rate)
                 wav.writeframes(buf)
             logging.debug(f"Saved buffer to {wave_file}")
-        audio_tensor = memoryview_to_tensor(buf, is_2d=True)
-        seg = Segment(0, min(total_duration, self.max_chunk_duration))
-        embedding = self.inference.crop({"waveform": audio_tensor, "sample_rate": sample_rate}, chunk=seg)
+        if self.use_campplus:
+            audio_tensor = memoryview_to_ndarray(buf, is_2d=True)
+            results, _ = self.model.inference(audio_tensor, device=self.device)
+            embedding = results[0]["spk_embedding"]
+            # torch.shape [n, 192], calculate mean of n
+            embedding = embedding.mean(axis=0).detach().cpu().numpy()
+        else:
+            audio_tensor = memoryview_to_tensor(buf, is_2d=True)
+            seg = Segment(0, min(total_duration, self.max_chunk_duration))
+            embedding = self.inference.crop({"waveform": audio_tensor, "sample_rate": sample_rate}, chunk=seg)
+            embedding = embedding.detach().cpu().numpy()
         embedding = embedding.reshape(1, -1)
         return embedding
     
