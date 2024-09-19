@@ -34,7 +34,7 @@ llm:
   engine: "CHATGPT"  # CHATGPT QWEN qwen_local,  qwen-plus-0919 支持 CHATGPT SDK
   #model:  chagpt: chatgpt-4o-latest gpt-4o-mini;  qwen: qwen-plus-latest qwen-plus-0919; qwen_local: Qwen/Qwen2.5-7B-Instruct
   model: "qwen-plus-0919"
-  openai_custom_key_envname="OPENAI_API_KEY"
+  openai_custom_key_envname: "OPENAI_API_KEY"
   openai_custom_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
   location: "cn"
   vl_engine: "qwen"
