@@ -69,7 +69,7 @@ class MessageConsumer():
                 await asyncio.sleep(1)
                 continue
             logging.info("got tts result, len: %0.2f", len(res['visemes'])/visemes_fps)
-            await self._chat.send_audio_message(res['audio'], res['visemes'], chat_msg.id, visemes_fps, self._user_sid)
+            await self._chat.send_audio_message(res['audio'], res['visemes'], chat_msg.id, visemes_fps, self._user)
         logging.info("tts task finished")
 
     def update(self, user: str = None, callback: Callable = None):
@@ -138,7 +138,7 @@ class MessageConsumer():
                 self._chat.on("move_received", process_move_cmd)
 
                 # find app user
-                for participant in self._room.participants.values():
+                for participant in self._room.remote_participants.values():
                     if is_app_user(participant.identity):
                         self._user = participant.identity
                         self._user_sid = participant.sid

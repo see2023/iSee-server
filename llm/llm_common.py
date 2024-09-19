@@ -11,7 +11,7 @@ from common.config import config
 def get_llm() -> LLMBase:
     if config.llm.engine == 'chatgpt':
         logging.info("Using ChatGPT as LLM engine")
-        return ChatGPT()
+        return ChatGPT(os.environ[config.llm.openai_custom_key_envname], config.llm.openai_custom_url)
     elif config.llm.engine == 'qwen_local':
         logging.info("Using QwenLocal as LLM engine")
         return QwenLocal(config.llm.model, config.llm.cache_root)

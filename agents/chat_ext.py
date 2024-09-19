@@ -63,24 +63,24 @@ class ChatExtManager(EventEmitter[EventTypes]):
         )
         await self._lp.publish_data(
             payload=json.dumps(msg.asjsondict()),
-            kind=DataPacketKind.KIND_RELIABLE,
+            reliable=True,
             topic=_CHAT_TOPIC,
         )
         return msg
     
-    async def send_chunk(self, chunk_data, topic, semaphore: asyncio.Semaphore, user_sid: str):
+    async def send_chunk(self, chunk_data, topic, semaphore: asyncio.Semaphore, user_identity: str):
         async with semaphore:
             try:
                 await self._lp.publish_data(
                     payload=chunk_data,
-                    kind=DataPacketKind.KIND_RELIABLE,
+                    reliable=True,
                     topic=topic,
-                    destination_sids=[user_sid],
+                    destination_identities=[user_identity],
                 )
             except Exception as e:
                 logging.warning("Failed to send chunk: %s", e, exc_info=True)
 
-    async def send_audio_message(self, audio_data: bytes, visemes, text_id: str, visemes_fps: float, user_sid: str):
+    async def send_audio_message(self, audio_data: bytes, visemes, text_id: str, visemes_fps: float, user_identity: str):
         """Send a chat message to the end user using LiveKit Chat Protocol.
 
         Args:
@@ -113,7 +113,7 @@ class ChatExtManager(EventEmitter[EventTypes]):
                 start = i * chunk_size
                 end = min(start + chunk_size, total_size)
                 chunk_data = payload_all[start:end]
-                tasks.append(self.send_chunk(chunk_data, topic, semaphore, user_sid))
+                tasks.append(self.send_chunk(chunk_data, topic, semaphore, user_identity))
             await asyncio.gather(*tasks)
             return id 
         except Exception as e:
@@ -136,7 +136,7 @@ class ChatExtManager(EventEmitter[EventTypes]):
             )
             await self._lp.publish_data(
                 payload=json.dumps(msg.asjsondict()),
-                kind=DataPacketKind.KIND_RELIABLE,
+                reliable=True,
                 topic=_MOVE_TOPIC,
             )  
         except Exception as e:
@@ -148,7 +148,7 @@ class ChatExtManager(EventEmitter[EventTypes]):
         """
         await self._lp.publish_data(
             payload=json.dumps(message.asjsondict()),
-            kind=DataPacketKind.KIND_RELIABLE,
+            reliable=True,
             topic=_CHAT_UPDATE_TOPIC,
         )
 

@@ -1,0 +1,18 @@
+# python -m pip install autoawq #==0.2.6
+# python -m pip install git+https://github.com/huggingface/transformers
+
+# Core dependencies
+gradio==4.44.0
+gradio_client==1.3.0
+qwen-vl-utils==0.0.5
+torch==2.4.1
+torchvision==0.19.1
+#transformers==4.45.0.dev0
+transformers-stream-generator==0.0.5
+
+# Optional dependency
+# Uncomment the following line if you need flash-attn
+# flash-attn==2.6.1
+
+accelerate>=0.34.2
+av

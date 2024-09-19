@@ -17,14 +17,16 @@ from common.config import config
 class ChatGPT(LLMBase):
     """OpenAI ChatGPT Plugin"""
 
-    def __init__(self, message_capacity: int = 6000):
+    def __init__(self, api_key: str, base_url: str, message_capacity: int = 6000):
         """
         Args:
             message_capacity (int): Maximum number of messages to send to the chat
             model (str): Which model to use (i.e. 'gpt-3.5-turbo-0125')
         """
+        if not base_url: 
+            base_url = None
         super().__init__("OPENAI_API_KEY", message_capacity=message_capacity)
-        self._client = openai.AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        self._client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
 
     async def generate_text_streamed(self, user_id: str, model: str = "gpt-3.5-turbo-0125", addtional_user_message: Message = None, use_redis_history: bool = True) -> AsyncIterable[str]:
         if not await self.prepare(user_id, model, addtional_user_message, use_redis_history):

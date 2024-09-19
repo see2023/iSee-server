@@ -77,6 +77,8 @@ class LLMConfig:
             self,
             engine: str,
             model: str,
+            openai_custom_key_envname: str,
+            openai_custom_url: str,
             location: str,
             vl_engine: str,
             vl_model: str,
@@ -94,7 +96,9 @@ class LLMConfig:
             cache_root:str,
     ):
         self.engine = engine.lower()
+        self.openai_custom_key_envname = openai_custom_key_envname
         self.model = model
+        self.openai_custom_url = openai_custom_url
         self.location = location
         self.vl_engine = vl_engine.lower()
         self.vl_model = vl_model.lower()
