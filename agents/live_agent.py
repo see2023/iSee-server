@@ -2,20 +2,27 @@ import asyncio
 import json
 import logging
 import os
+import sys
+import time
+import datetime
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from common.config import config
+def setup_logging():
+    logging.basicConfig(
+        level=logging.DEBUG if config.agents.log_debug else logging.INFO,
+        format='%(asctime)s - %(levelname)s [in %(pathname)s:%(lineno)d] - %(message)s',
+    )
+    logging.getLogger("websockets").setLevel(logging.ERROR)
+setup_logging()
 import numpy as np
 import fast_whisper_stt
 import xf_stt
 import sense_voice
 import chat_ext
-import sys
-import time
-import datetime
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db.redis_cli import get_redis_client, REDIS_CHAT_KEY, REDIS_PREFIX, write_chat_to_redis, write_mq_to_redis, write_detected_names_to_redis
 
 from dotenv import load_dotenv
 load_dotenv(override=True)
-from common.config import config
 from livekit import agents, rtc
 from livekit.plugins import openai 
 from detect.yolov8 import YoloV8Detector
@@ -30,14 +37,7 @@ font_path = "/Library/Fonts/Arial Unicode.ttf" if sys.platform == "darwin" else 
 font_size = 40
 font = ImageFont.truetype(font_path, font_size)
 
-logging.basicConfig(
-    format='%(asctime)s - %(levelname)s [in %(pathname)s:%(lineno)d] - %(message)s',
-)
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG if config.agents.log_debug else logging.INFO)
-logging.getLogger("websockets").setLevel(logging.ERROR)
-
-
 
 
 class ModelManager: # singleton

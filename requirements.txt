@@ -1,4 +1,4 @@
-livekit==0.8.0
+livekit==0.9.1
 livekit-api==0.4.2
 flask
 redis
@@ -11,6 +11,7 @@ livekit-plugins-silero==0.1.1
 livekit-plugins-openai==0.2.0
 openai>=1.7.2
 faster_whisper
+openai-whisper
 dashscope
 PyYAML
 cnlunar
@@ -21,3 +22,5 @@ funasr
 funasr-onnx
 bs4
 ultralytics
+pyannote.audio
+modelscope

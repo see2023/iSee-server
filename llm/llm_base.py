@@ -9,8 +9,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db.redis_cli import get_redis_client, REDIS_CHAT_KEY, write_chat_to_redis, get_detected_names_from_redis
 from agents.chat_ext import CHAT_MEMBER_APP, CHAT_MEMBER_ASSITANT
 from enum import Enum
-from dataclasses import dataclass
-from typing import AsyncIterable, List, Optional, Callable
+from dataclasses import dataclass, field
+from typing import AsyncIterable, List, Optional, Callable, Union
 from common.tools import get_lunar
 from common.config import config
 from llm.llm_tools import Tools, ToolNames, ToolActions
@@ -20,16 +20,62 @@ load_dotenv()
 
 
 MessageRole = Enum("MessageRole", ["system", "user", "assistant", "function"])
+
+# 定义 TextContent 类
+@dataclass
+class TextContent:
+    type: str = "text"
+    text: str = ""
+
+# 定义 ImageContent 类
+@dataclass
+class ImageContent:
+    type: str = "image_url"
+    image_url: dict = field(default_factory=lambda: {"url": ""})
+
+# 定义 Message 类，支持纯文本或多模态（TextContent 和 ImageContent）的 content
 @dataclass
 class Message:
     role: MessageRole
-    content: str
+    content: Union[str, List[Union[TextContent, ImageContent]]]  # 支持字符串或多模态的列表
 
     def to_dict(self) -> dict:
-        return {"role": self.role.name, "content": self.content}
+        # 如果 content 是字符串，直接返回字符串格式
+        if isinstance(self.content, str):
+            return {"role": self.role.name, "content": self.content}
+        
+        # 如果 content 是列表，构造多模态格式
+        return {
+            "role": self.role.name,
+            "content": [
+                {"type": "text", "text": item.text} if isinstance(item, TextContent) else {"type": "image_url", "image_url": item.image_url}
+                for item in self.content
+            ]
+        }
     
     def get_content_length(self) -> int:
-        return len(self.content)
+        # 如果 content 是字符串，直接返回其长度
+        if isinstance(self.content, str):
+            return len(self.content)
+        
+        # 如果 content 是列表，计算文本和图片 URL 的长度
+        length = 0
+        for item in self.content:
+            if isinstance(item, TextContent):
+                length += len(item.text)
+            elif isinstance(item, ImageContent):
+                length += len(item.image_url.get("url", ""))
+        return length
+# @dataclass
+# class Message:
+#     role: MessageRole
+#     content: str
+
+#     def to_dict(self) -> dict:
+#         return {"role": self.role.name, "content": self.content}
+    
+#     def get_content_length(self) -> int:
+#         return len(self.content)
 
 
 SYSTEM_PROMPTS = {

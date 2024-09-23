@@ -1,5 +1,8 @@
 from dotenv import load_dotenv
 load_dotenv()
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import time
 import torch
 import numpy as np
@@ -17,7 +20,6 @@ from typing import List, Dict
 from common.config import config
 from collections import deque
 from agents_tools import memoryview_to_tensor, memoryview_to_ndarray
-
 
 
 @dataclass
