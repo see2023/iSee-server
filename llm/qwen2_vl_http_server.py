@@ -7,6 +7,11 @@ import requests
 from io import BytesIO
 import base64
 from PIL import Image, UnidentifiedImageError
+import logging
+import time
+
+# 设置日志配置
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s [in %(pathname)s:%(lineno)d] - %(message)s')
 
 app = Flask(__name__)
 
@@ -18,7 +23,7 @@ os.environ["HTTPS_PROXY"] = http_proxy
 cache_dir = "E:\\dp\\cache" if os.path.exists("E:\\dp\\cache") else None
 model_name = "Qwen/Qwen2-VL-2B-Instruct-AWQ"
 device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
-print(f"Using device: {device}")
+logging.info(f"Using device: {device}")
 model = Qwen2VLForConditionalGeneration.from_pretrained(
     model_name, torch_dtype="auto", device_map="auto", low_cpu_mem_usage=True, cache_dir=cache_dir
 )
@@ -35,7 +40,7 @@ processor = AutoProcessor.from_pretrained(model_name, cache_dir=cache_dir)
 curl http://localhost:8000/v1/chat/completions \
     -H "Content-Type: application/json" \
     -d '{
-    "model": "Qwen2-VL-7B-Instruct",
+    "model": "Qwen2-VL-2B-Instruct-AWQ",
     "messages": [
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": [
@@ -48,6 +53,7 @@ curl http://localhost:8000/v1/chat/completions \
 
 @app.route('/v1/chat/completions', methods=['POST'])
 def chat_completions():
+    start_time = time.time()
     data = request.json
     messages = data['messages']
     
@@ -72,6 +78,7 @@ def chat_completions():
                             image = Image.open(url)
                         item['image'] = image  # 替换URL为图片数据
                     except (requests.RequestException, UnidentifiedImageError, OSError, ValueError) as e:
+                        logging.error(f"Failed to process image: {str(e)}")
                         return jsonify({"error": f"Failed to process image: {str(e)}"}), 400
 
     # 准备推理
@@ -96,7 +103,12 @@ def chat_completions():
             generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
         )
     except Exception as e:
+        logging.error(f"Failed to generate output: {str(e)}")
         return jsonify({"error": f"Failed to generate output: {str(e)}"}), 500
+
+    end_time = time.time()
+    processing_time = end_time - start_time
+    logging.info(f"Request processed in {processing_time:.2f} seconds")
 
     return jsonify({
         "model": data['model'],
