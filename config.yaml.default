@@ -29,6 +29,7 @@ agents:
   speaker_write_wav: False
   min_chunk_duration: 3
   log_debug: True
+  max_images_for_speak: 2
 
 llm:
   engine: "CHATGPT"  # CHATGPT QWEN qwen_local,  qwen-plus-0919 支持 CHATGPT SDK
@@ -36,6 +37,8 @@ llm:
   model: "qwen-plus-0919"
   openai_custom_key_envname: "OPENAI_API_KEY"
   openai_custom_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  openai_custom_mm_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  openai_custom_mm_model: "qwen-vl-plus-0809" # qwen-vl-plus-0809 qwen-vl-max-0809
   location: "cn"
   vl_engine: "qwen"
   vl_model: "qwen-vl-plus" # qwen-vl-plus qwen-vl-max

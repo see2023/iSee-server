@@ -44,14 +44,26 @@ class Message:
         if isinstance(self.content, str):
             return {"role": self.role.name, "content": self.content}
         
-        # 如果 content 是列表，构造多模态格式
-        return {
-            "role": self.role.name,
-            "content": [
-                {"type": "text", "text": item.text} if isinstance(item, TextContent) else {"type": "image_url", "image_url": item.image_url}
-                for item in self.content
-            ]
-        }
+        # 如果 content 是列表
+        if isinstance(self.content, list):
+            # 如果列表中的元素已经是字典，直接使用
+            if all(isinstance(item, dict) for item in self.content):
+                return {
+                    "role": self.role.name,
+                    "content": self.content
+                }
+            # 否则，构造多模态格式
+            return {
+                "role": self.role.name,
+                "content": [
+                    {"type": "text", "text": item.text} if isinstance(item, TextContent) 
+                    else {"type": "image_url", "image_url": item.image_url}
+                    for item in self.content
+                ]
+            }
+        
+        # 如果 content 既不是字符串也不是列表，抛出异常
+        raise ValueError("Content must be either a string or a list of TextContent, ImageContent, or dict objects")
     
     def get_content_length(self) -> int:
         # 如果 content 是字符串，直接返回其长度
@@ -79,10 +91,11 @@ class Message:
 
 
 SYSTEM_PROMPTS = {
-    "default": """你叫桔子，今年1岁，是一个聪明、友善的助手。你会在手机屏幕上以一个可爱的形象出现，手机绑在一个可移动小车上，可通过摄像头观察环境，并一直朝着目标用户移动，保持一定距离。
+    "default": """你叫桔子，今年1岁，是一个聪明、友善的智能助手。
     用户用语音持续输入指令，你需要分析并理解用户的意图，给出简短、精准的回复，请言简意赅的说结论，最好不要超过30个字。
     请注意语音输入可能识别不准确，需要结合语境、上下文等来判断用户的意图，尤其要注意同音字误判的纠正。
     当前地点是:%s， 时间：%s。 """,
+    "onboard": "你会在手机屏幕上以一个可爱的形象出现，手机绑在一个可移动小车上，可通过摄像头观察环境，并一直朝着目标用户移动，保持一定距离。",
     "detect": "通过摄像头你现在可以看到这些目标：%s。",
     "tools": """你可以使用以下工具：%s。 如果需要使用工具， 请务必按顺序分3行返回且仅返回以下字段：
     Reason:首先返回需要使用工具的原因，比如：我需要先搜索一下. 
@@ -95,7 +108,7 @@ SYSTEM_PROMPTS = {
     此时，如果你觉得本轮对话不需要参与回复，请答复内容： keep_silent. 比如：
     user: [speaker_1] 爸爸，你吃饭了吗？
     assistant:  keep_silent
-    user: [speaker_2] 啊，这个..
+    user: [speaker_2] 我...
     assistant:  keep_silent
     user: [speaker_2] 吃了，我吃了三大碗米饭.
     assistant:  吃这么多可不好哦, 要多吃点蔬菜.

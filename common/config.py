@@ -46,6 +46,7 @@ class AgentsConfig:
             speaker_distance_threshold: float,
             min_chunk_duration: float,
             speaker_write_wav: bool,
+            max_images_for_speak: int,
     ):
         self.show_detected_results = show_detected_results
         self.yolo_verbose = yolo_verbose
@@ -67,7 +68,7 @@ class AgentsConfig:
         self.speaker_distance_threshold = speaker_distance_threshold
         self.min_chunk_duration = min_chunk_duration
         self.speaker_write_wav = speaker_write_wav
-
+        self.max_images_for_speak = max_images_for_speak
     @classmethod
     def from_dict(cls, config_dict: Dict[str, any]):
         return cls(**config_dict)
@@ -79,6 +80,8 @@ class LLMConfig:
             model: str,
             openai_custom_key_envname: str,
             openai_custom_url: str,
+            openai_custom_mm_url: str,
+            openai_custom_mm_model: str,
             location: str,
             vl_engine: str,
             vl_model: str,
@@ -99,6 +102,8 @@ class LLMConfig:
         self.openai_custom_key_envname = openai_custom_key_envname
         self.model = model
         self.openai_custom_url = openai_custom_url
+        self.openai_custom_mm_model = openai_custom_mm_model
+        self.openai_custom_mm_url = openai_custom_mm_url
         self.location = location
         self.vl_engine = vl_engine.lower()
         self.vl_model = vl_model.lower()

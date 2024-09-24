@@ -33,6 +33,12 @@ import matplotlib
 from llm.llm_base import LLMBase, VisualLLMBase, KEEP_SILENT_RESPONSE
 from control.simple_control import SimpleControl, Command
 from agents.speaker import Speaker
+
+import base64
+from io import BytesIO
+from llm.llm_base import Message, MessageRole
+from llm.qwen2_vl_http_server_cli import send_message_to_server
+
 font_path = "/Library/Fonts/Arial Unicode.ttf" if sys.platform == "darwin" else "arial.ttf"
 font_size = 40
 font = ImageFont.truetype(font_path, font_size)
@@ -79,6 +85,7 @@ class ModelManager: # singleton
         self.vad = VAD()
 
 
+
 def get_model():
     model_manager = ModelManager.get_instance()
     return model_manager.stt_model, model_manager.detector, model_manager.vad, model_manager.speaker_detector
@@ -113,6 +120,18 @@ class LiveAgent:
         self.results = []
         self.video_streaming = False
         self.audio_streaming = False
+
+        # 捕捉说话期间的图片
+        self.image_list_for_speak = []
+        self.max_images_for_speak = config.agents.max_images_for_speak  # 设置最大长度限制
+        self.image_capture_interval_for_speak = 1  # 设置图像捕获间隔（秒）
+        self.capture_images_for_speak = False
+        self.last_capture_time_for_speak = 0
+        self.caption_interval_for_speak = 60
+        self.last_caption_time_for_speak = 0
+        self.current_caption_for_speak = ""
+        self.last_question_from_user = ""
+        self.last_question_from_user_time = 0
 
         self.show_detected_results = config.agents.show_detected_results
         if self.show_detected_results and config.agents.enable_video:
@@ -205,6 +224,7 @@ class LiveAgent:
         )
         self.ctx.create_task(self.ctx.room.local_participant.update_metadata(metadata))
 
+    # 保存图片至本地磁盘，等待视觉语言模型处理
     async def vision_lang_worker(self):
         while self.video_streaming:
             try:
@@ -221,6 +241,7 @@ class LiveAgent:
                 await asyncio.sleep(1)
         logging.info("vision lang worker done")
 
+    # 如果超过了检测间隔，或者检测目标发生了变化，则需要将图片保存起来，下一步进行视觉语言处理
     async def check_vision_lang(self, detected_names, detecting_img: Image):
         if detecting_img.width < 300 or detecting_img.height < 300:
             return
@@ -240,6 +261,7 @@ class LiveAgent:
         self.currrent_vl_img = detecting_img
 
 
+    # 在图像中检测跟随目标，并向app发送移动命令
     async def video_detect_worker(self):
         while self.video_streaming:
             try:
@@ -306,6 +328,7 @@ class LiveAgent:
                 self.currrent_img = None
         logging.info("video detect worker done")
 
+    # 从视频流中获取单帧图像,放入self.currrent_img(PIL.Image)
     async def video_track_worker(self, track: rtc.VideoTrack):
         video_stream = rtc.VideoStream(track)
         last_catch_time = 0
@@ -317,16 +340,32 @@ class LiveAgent:
                 await video_stream.aclose()
             frame: rtc.VideoFrame = event.frame
             current_time = time.time()
-            if (current_time - last_catch_time) < frame_interval_normal or self.detecting:
-                # logging.debug("video frame skipped ______ ")
+            if (current_time - last_catch_time) < frame_interval_normal or self.detecting or config.agents.vision_lang_interval<=0:
+                should_catch_for_detect = False
+            else:
+                should_catch_for_detect = True
+            if self.capture_images_for_speak and (current_time - self.last_capture_time_for_speak) >= self.image_capture_interval_for_speak \
+                    and len(self.image_list_for_speak) < self.max_images_for_speak:
+                should_catch_for_speak = True
+            else:
+                should_catch_for_speak = False
+            if not should_catch_for_detect and not should_catch_for_speak:
                 continue
-            last_catch_time = current_time
-            logging.debug("received video frame: %d x %d", frame.width, frame.height)
+            logging.debug("received video frame: %d x %d, catch for detect: %s, catch for speak: %s", frame.width, frame.height, should_catch_for_detect, should_catch_for_speak)
             try:
                 img = YoloV8Detector.VidioFrame_to_Image(frame)
                 if not img:
                     continue
-                self.currrent_img = img
+                if should_catch_for_detect:
+                    last_catch_time = current_time
+                    self.currrent_img = img
+                if should_catch_for_speak:
+                    self.image_list_for_speak.append(img)
+                    self.last_capture_time_for_speak = current_time
+                    if len(self.image_list_for_speak) >= self.max_images_for_speak:
+                        logging.info("start sending images to server")
+                        await self.send_images_to_server()
+
             except Exception as e:
                 logging.error("error catching video frame: %s", e)
 
@@ -361,16 +400,73 @@ class LiveAgent:
             plt.draw()
             plt.pause(0.001)
 
+    async def send_images_to_server(self) -> str:
+        if not self.image_list_for_speak:
+            logging.warning("No images to send to server")
+            return ""
+        if time.time() - self.last_caption_time_for_speak < self.caption_interval_for_speak:
+            logging.info("skip sending images to server, last caption time: %s, current time: %s", self.last_caption_time_for_speak, time.time())
+            return
+
+        # 将图像列表转换为base64编码的字符串列表
+        image_contents = []
+        for i, img in enumerate(self.image_list_for_speak):
+            buffered = BytesIO()
+            img.save(buffered, format="JPEG")
+            img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+            image_contents.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}
+            })
+
+        if self.last_question_from_user and time.time() - self.last_question_from_user_time < self.caption_interval_for_speak:
+            prompts = "请根据视频截图和说话内容，简要描述一下正在说话的人的特征、当前的场景。"
+            prompts += f"他上次的问题是：{self.last_question_from_user}"
+        else:
+            prompts = "请根据视频截图简要的描述一下正在说话的人的特征和当前的场景。"
+        # 添加文本内容
+        image_contents.append({
+            "type": "text",
+            "text": prompts
+        })
+
+        # 创建 Message 对象
+        message = Message(
+            role=MessageRole.user,
+            content=image_contents
+        )
+        response = ""
+        try:
+            # 发送消息到服务器并获取响应
+            response = await send_message_to_server([message],model=config.llm.openai_custom_mm_model)
+            logging.info(f"Server response: {response}, images sent: {len(self.image_list_for_speak)}, prompts: {prompts},\
+                         model: {config.llm.openai_custom_mm_model}")
+            self.last_caption_time_for_speak = time.time()
+            self.current_caption_for_speak = response
+
+        except Exception as e:
+            logging.error(f"Error sending images to server: {e}")
+
+        # 清空图像列表
+        self.image_list_for_speak.clear()
+        return response
+
 
     async def speakStatusChanged(self, event: agents.vad.VADEventType) -> None:
         logging.info("speech status changed: %s", event)
+        if event == agents.vad.VADEventType.START_SPEAKING:
+            self.capture_images_for_speak = True
+            self.image_list_for_speak.clear()
+        elif event == agents.vad.VADEventType.END_SPEAKING:
+            self.capture_images_for_speak = False
+            # await self.send_images_to_server()
+        else:
+            return
         cmd : str = None
         if event == agents.vad.VADEventType.START_SPEAKING:
             cmd = Command.START_SPEAK
         elif event == agents.vad.VADEventType.END_SPEAKING:
             cmd = Command.STOP_SPEAK
-        else:
-            return
         await self.chat.send_move_cmd(
             cmd, srcname=chat_ext.CHAT_MEMBER_ASSITANT, timestamp=time.time(),
         )
@@ -437,15 +533,21 @@ class LiveAgent:
                 self.catch_follow_pos = False
                 continue
 
+            if len(speech.text) > 5:
+                self.last_question_from_user = speech.text
+                self.last_question_from_user_time = speech.start_time
             if speaker_id is not None and speaker_id > 0:
                 speech.text = f"[speaker_{speaker_id}] {speech.text}"
+            if config.llm.openai_custom_mm_model and time.time() - self.last_caption_time_for_speak<self.caption_interval_for_speak and self.current_caption_for_speak:
+                # asyncio.create_task(self.send_images_to_server())
+                speech.text = f"[当前会话背景:{self.current_caption_for_speak}] {speech.text}"
+                self.current_caption_for_speak = None
 
             await write_chat_to_redis(self.stream_key, text=speech.text, timestamp=speech.start_time, duration=duration, language=speech.language, srcname=chat_ext.CHAT_MEMBER_APP)
             await self.chat.send_message(
                 message=speech.text, srcname=chat_ext.CHAT_MEMBER_APP, timestamp=speech.start_time,
                 duration=duration, language=speech.language
             )
-            # await write_mq_to_redis(speech.text)
 
             await asyncio.sleep(0.001)
         await stt_stream.aclose()
