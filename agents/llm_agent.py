@@ -15,6 +15,7 @@ from livekit import rtc
 from common.http_post import get_token
 from common.tts import text_to_speech_and_visemes
 from control.simple_control import Command
+from agents.tts_manager import TTSManager
 
 from common.config import config
 
@@ -46,32 +47,13 @@ class MessageConsumer():
         self.vlm: VisualLLMBase = get_vl_LLM()
         self._tts_msg_queue = asyncio.Queue[ChatExtMessage]()
         self._app_msg_queue = asyncio.Queue[str]()
+        self.tts_manager = TTSManager()
+        self._task_tts = None
     
     def clear_tts_msg_queue(self):
         while not self._tts_msg_queue.empty():
             self._tts_msg_queue.get_nowait()
     
-    async def run_tts_msg(self):
-        global quit_flag
-        logging.info("start tts task")
-        while not quit_flag:
-            try:
-                chat_msg:ChatExtMessage = await self._tts_msg_queue.get()
-            except asyncio.CancelledError:
-                break
-            if not chat_msg.message or len(chat_msg.message) < 2:
-                logging.info("empty message, skip")
-                continue
-            logging.info("tts got chat message: %s", chat_msg.message)
-            res, visemes_fps = await text_to_speech_and_visemes(chat_msg.message)
-            if not res:
-                logging.error("Failed to get tts result")
-                await asyncio.sleep(1)
-                continue
-            logging.info("got tts result, len: %0.2f", len(res['visemes'])/visemes_fps)
-            await self._chat.send_audio_message(res['audio'], res['visemes'], chat_msg.id, visemes_fps, self._user_sid)
-        logging.info("tts task finished")
-
     def update(self, user: str = None, callback: Callable = None):
         if user:
             self._user = user
@@ -101,6 +83,7 @@ class MessageConsumer():
                     if is_app_user(participant.identity):
                         self._user = participant.identity
                         self._user_sid = participant.sid
+                        self.tts_manager.set_user_sid(self._user_sid)
                         logging.info("got user: " + self._user)
                     else:
                         logging.info("got api message: " + participant.identity)
@@ -117,6 +100,7 @@ class MessageConsumer():
                 # connect timeout 10s
                 await self._room.connect(self._rtc_url, token)
                 self._chat = ChatExtManager(self._room)
+                self.tts_manager.set_chat_manager(self._chat)
                 await asyncio.sleep(0.5)
 
                 def process_chat(msg: ChatExtMessage):
@@ -165,7 +149,7 @@ class MessageConsumer():
             message=msg, srcname=CHAT_MEMBER_ASSITANT, timestamp=time.time(),
         )
         logging.info("sending message to app: %s, id: %s", msg, chat_msg.id)
-        self._tts_msg_queue.put_nowait(chat_msg)
+        await self.tts_manager.enqueue_message(chat_msg)
 
     
     async def handle_action(self, cmd:str, args:list = None):
@@ -192,10 +176,11 @@ class MessageConsumer():
             return
         
         self._task = asyncio.create_task(self.process_app_msg())
-        self._task_tts = asyncio.create_task(self.run_tts_msg())
+        self._task_tts = asyncio.create_task(self.tts_manager.run_tts_msg())
         while not quit_flag:
             await asyncio.sleep(1)
         self._task.cancel()
+        self.tts_manager.stop()
         self._task_tts.cancel()
         await self._task
         await self._task_tts
@@ -286,7 +271,7 @@ class MessageConsumer():
                             if output:
                                 if not got_response:
                                     got_response = True
-                                    self.clear_tts_msg_queue()
+                                    self.tts_manager.clear_tts_msg_queue()
                                 if config.llm.enable_custom_functions:
                                     output = self.llm_engine.parse_custom_function(output)
                                     if output is None or len(output) == 0:
@@ -297,7 +282,7 @@ class MessageConsumer():
                     else:
                         output = await self.llm_engine.generate_text(self._user, config.llm.model)
                         if output:
-                            self.clear_tts_msg_queue()
+                            self.tts_manager.clear_tts_msg_queue()
                             if config.llm.enable_custom_functions:
                                 output = self.llm_engine.parse_custom_function(output)
                             await self.send_to_app(output)

@@ -29,7 +29,8 @@ agents:
   speaker_write_wav: False
   min_chunk_duration: 3
   log_debug: True
-  max_images_for_speak: 2
+  max_images_for_speak: 1
+  scene_check_interval: 60  # Interval in seconds for checking the scene
 
 llm:
   engine: "CHATGPT"  # CHATGPT QWEN qwen_local,  qwen-plus-0919 支持 CHATGPT SDK

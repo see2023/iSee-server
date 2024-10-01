@@ -47,6 +47,7 @@ class AgentsConfig:
             min_chunk_duration: float,
             speaker_write_wav: bool,
             max_images_for_speak: int,
+            scene_check_interval: int,
     ):
         self.show_detected_results = show_detected_results
         self.yolo_verbose = yolo_verbose
@@ -69,6 +70,7 @@ class AgentsConfig:
         self.min_chunk_duration = min_chunk_duration
         self.speaker_write_wav = speaker_write_wav
         self.max_images_for_speak = max_images_for_speak
+        self.scene_check_interval = scene_check_interval
     @classmethod
     def from_dict(cls, config_dict: Dict[str, any]):
         return cls(**config_dict)

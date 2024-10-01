@@ -7,6 +7,8 @@ import time
 import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common.config import config
+from agents.tts_manager import TTSManager
+
 def setup_logging():
     logging.basicConfig(
         level=logging.DEBUG if config.agents.log_debug else logging.INFO,
@@ -38,6 +40,7 @@ import base64
 from io import BytesIO
 from llm.llm_base import Message, MessageRole
 from llm.qwen2_vl_http_server_cli import send_message_to_server
+from video_scene_monitor import VideoSceneMonitor
 
 font_path = "/Library/Fonts/Arial Unicode.ttf" if sys.platform == "darwin" else "arial.ttf"
 font_size = 40
@@ -106,7 +109,9 @@ class LiveAgent:
         logging.info("Live agent created")
 
         self.ctx = ctx
+        self.tts_manager = TTSManager()  # 新增 TTSManager 实例
         self.chat = chat_ext.ChatExtManager(ctx.room)
+        self.tts_manager.set_chat_manager(self.chat)  # 设置 chat manager
         self.redis = get_redis_client()
         self.remoteId: str = None
         self.stream_key: str = None
@@ -139,6 +144,16 @@ class LiveAgent:
             self.fig = plt.figure("Video")
             self.im =   plt.imshow(np.zeros((10, 10, 3)))
 
+        if config.agents.scene_check_interval > 0:
+            self.video_scene_monitor = VideoSceneMonitor(
+                interval=config.agents.scene_check_interval,
+                send_message_callback=self.send_to_app,  # 使用 send_to_app 方法
+                send_to_server_callback=send_message_to_server
+            )
+        else:
+            self.video_scene_monitor = None 
+        self.last_scene_check_time = 0
+
         # setup callbacks
         def subscribe_cb(
             track: rtc.Track,
@@ -151,6 +166,7 @@ class LiveAgent:
                     self.ctx.create_task(self.audio_track_worker(track))
                 if not self.remoteId:
                     self.remoteId = participant.identity
+                    self.tts_manager.set_user_sid(participant.sid)
                     async def set_user_info(user_id: str):
                         self.stream_key = REDIS_CHAT_KEY + user_id
                         logging.info("================================== redis xtrim key: %s", self.stream_key)
@@ -183,6 +199,8 @@ class LiveAgent:
                 logging.info("remote participant left, cleaning up")
                 self.remoteId = None
                 self.stream_key = None
+                if self.video_scene_monitor:
+                    self.video_scene_monitor.stop_monitoring()
             if track.kind == rtc.TrackKind.KIND_VIDEO:
                 self.video_streaming = False
             elif track.kind == rtc.TrackKind.KIND_AUDIO:
@@ -198,23 +216,30 @@ class LiveAgent:
         if msg == KEEP_SILENT_RESPONSE:
             return
         logging.info("sending message to app: %s", msg)
-        await self.chat.send_message(
+        chat_msg = await self.chat.send_message(
             message=msg, srcname=chat_ext.CHAT_MEMBER_ASSITANT, timestamp=time.time(),
         )
+        await self.tts_manager.enqueue_message(chat_msg)  # 将消息加入 TTS 队列
 
     async def start(self):
-        # give a bit of time for the user to fully connect so they don't miss
-        # the welcome message
+        # 给一点时间让用户完全连接，以免错过欢迎消息
         await asyncio.sleep(1)
 
-        # create_task is used to run coroutines in the background
+        # 创建任务以发送欢迎消息
         self.ctx.create_task(
             self.chat.send_message(
-                message="Welcome to the live agent! Just peak to me."
+                message="Welcome to the live agent! Just speak to me."
             )
         )
 
         self.update_agent_state("listening")
+
+        # 启动 TTS 管理器
+        self.ctx.create_task(self.tts_manager.run_tts_msg())
+
+        # 启动场景监控
+        if self.video_scene_monitor:
+            self.ctx.create_task(self.video_scene_monitor.start_monitoring())
 
     def update_agent_state(self, state: str):
         metadata = json.dumps(
@@ -349,7 +374,11 @@ class LiveAgent:
                 should_catch_for_speak = True
             else:
                 should_catch_for_speak = False
-            if not should_catch_for_detect and not should_catch_for_speak:
+            if current_time - self.last_scene_check_time < config.agents.scene_check_interval:
+                should_catch_for_scene = False
+            else:
+                should_catch_for_scene = True
+            if not should_catch_for_detect and not should_catch_for_speak and not should_catch_for_scene:
                 continue
             logging.debug("received video frame: %d x %d, catch for detect: %s, catch for speak: %s", frame.width, frame.height, should_catch_for_detect, should_catch_for_speak)
             try:
@@ -366,9 +395,14 @@ class LiveAgent:
                         logging.info("start sending images to server")
                         await self.send_images_to_server()
 
+                # Pass the current frame to the scene monitor
+                if should_catch_for_scene:
+                    self.last_scene_check_time = current_time
+                    if self.video_scene_monitor:
+                        self.video_scene_monitor.set_current_frame(img)
+
             except Exception as e:
                 logging.error("error catching video frame: %s", e)
-
 
         logging.info("video track worker done")
     
@@ -420,10 +454,10 @@ class LiveAgent:
             })
 
         if self.last_question_from_user and time.time() - self.last_question_from_user_time < self.caption_interval_for_speak:
-            prompts = "请根据视频截图和说话内容，简要描述一下正在说话的人的特征、当前的场景。"
+            prompts = "请根据实时视频和说话内容，简要描述一下正在说话的人的特征、当前的场景。"
             prompts += f"他上次的问题是：{self.last_question_from_user}"
         else:
-            prompts = "请根据视频截图简要的描述一下正在说话的人的特征和当前的场景。"
+            prompts = "请根据实时视频简要的描述一下正在说话的人的特征和当前的场景。"
         # 添加文本内容
         image_contents.append({
             "type": "text",
