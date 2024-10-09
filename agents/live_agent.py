@@ -14,7 +14,8 @@ def setup_logging():
         level=logging.DEBUG if config.agents.log_debug else logging.INFO,
         format='%(asctime)s - %(levelname)s [in %(pathname)s:%(lineno)d] - %(message)s',
     )
-    logging.getLogger("websockets").setLevel(logging.ERROR)
+    logging.getLogger("websockets").setLevel(logging.WARNING)
+    logging.getLogger("openai").setLevel(logging.WARNING)
 setup_logging()
 import numpy as np
 import fast_whisper_stt
@@ -127,16 +128,11 @@ class LiveAgent:
         self.audio_streaming = False
 
         # 捕捉说话期间的图片
-        self.image_list_for_speak = []
         self.max_images_for_speak = config.agents.max_images_for_speak  # 设置最大长度限制
+        self.images_count_for_speak = 0
         self.image_capture_interval_for_speak = 1  # 设置图像捕获间隔（秒）
         self.capture_images_for_speak = False
         self.last_capture_time_for_speak = 0
-        self.caption_interval_for_speak = 60
-        self.last_caption_time_for_speak = 0
-        self.current_caption_for_speak = ""
-        self.last_question_from_user = ""
-        self.last_question_from_user_time = 0
 
         self.show_detected_results = config.agents.show_detected_results
         if self.show_detected_results and config.agents.enable_video:
@@ -147,6 +143,7 @@ class LiveAgent:
         if config.agents.scene_check_interval > 0:
             self.video_scene_monitor = VideoSceneMonitor(
                 interval=config.agents.scene_check_interval,
+                min_interval=config.agents.scene_check_min_interval,
                 send_message_callback=self.send_to_app,  # 使用 send_to_app 方法
                 send_to_server_callback=send_message_to_server
             )
@@ -212,14 +209,17 @@ class LiveAgent:
             asyncio.ensure_future(process_chat(msg))
         self.chat.on("message_received", on_message)
 
-    async def send_to_app(self, msg: str):
+    async def send_to_app(self, msg: str, with_tts: bool = True, save_to_redis: bool = False):
         if msg == KEEP_SILENT_RESPONSE:
             return
         logging.info("sending message to app: %s", msg)
         chat_msg = await self.chat.send_message(
             message=msg, srcname=chat_ext.CHAT_MEMBER_ASSITANT, timestamp=time.time(),
         )
-        await self.tts_manager.enqueue_message(chat_msg)  # 将消息加入 TTS 队列
+        if with_tts:
+            await self.tts_manager.enqueue_message(chat_msg)  # 将消息加入 TTS 队列
+        if save_to_redis:
+            await write_chat_to_redis(self.stream_key, text=msg, timestamp=time.time(), srcname=chat_ext.CHAT_MEMBER_ASSITANT)
 
     async def start(self):
         # 给一点时间让用户完全连接，以免错过欢迎消息
@@ -369,15 +369,14 @@ class LiveAgent:
                 should_catch_for_detect = False
             else:
                 should_catch_for_detect = True
-            if self.capture_images_for_speak and (current_time - self.last_capture_time_for_speak) >= self.image_capture_interval_for_speak \
-                    and len(self.image_list_for_speak) < self.max_images_for_speak:
+            if self.video_scene_monitor and self.capture_images_for_speak and (current_time - self.last_capture_time_for_speak) >= self.image_capture_interval_for_speak:
                 should_catch_for_speak = True
             else:
                 should_catch_for_speak = False
-            if current_time - self.last_scene_check_time < config.agents.scene_check_interval:
-                should_catch_for_scene = False
-            else:
+            if self.video_scene_monitor and current_time - self.last_scene_check_time >= config.agents.scene_check_interval:
                 should_catch_for_scene = True
+            else:
+                should_catch_for_scene = False
             if not should_catch_for_detect and not should_catch_for_speak and not should_catch_for_scene:
                 continue
             logging.debug("received video frame: %d x %d, catch for detect: %s, catch for speak: %s", frame.width, frame.height, should_catch_for_detect, should_catch_for_speak)
@@ -389,17 +388,19 @@ class LiveAgent:
                     last_catch_time = current_time
                     self.currrent_img = img
                 if should_catch_for_speak:
-                    self.image_list_for_speak.append(img)
+                    self.video_scene_monitor.add_frame(img)
+                    self.images_count_for_speak += 1
                     self.last_capture_time_for_speak = current_time
-                    if len(self.image_list_for_speak) >= self.max_images_for_speak:
-                        logging.info("start sending images to server")
-                        await self.send_images_to_server()
+                    if self.images_count_for_speak >= self.max_images_for_speak:
+                        self.images_count_for_speak = 0
+                        self.video_scene_monitor.check_scene_immediately()
+
 
                 # Pass the current frame to the scene monitor
                 if should_catch_for_scene:
                     self.last_scene_check_time = current_time
                     if self.video_scene_monitor:
-                        self.video_scene_monitor.set_current_frame(img)
+                        self.video_scene_monitor.add_frame(img)
 
             except Exception as e:
                 logging.error("error catching video frame: %s", e)
@@ -434,66 +435,12 @@ class LiveAgent:
             plt.draw()
             plt.pause(0.001)
 
-    async def send_images_to_server(self) -> str:
-        if not self.image_list_for_speak:
-            logging.warning("No images to send to server")
-            return ""
-        if time.time() - self.last_caption_time_for_speak < self.caption_interval_for_speak:
-            logging.info("skip sending images to server, last caption time: %s, current time: %s", self.last_caption_time_for_speak, time.time())
-            return
-
-        # 将图像列表转换为base64编码的字符串列表
-        image_contents = []
-        for i, img in enumerate(self.image_list_for_speak):
-            buffered = BytesIO()
-            img.save(buffered, format="JPEG")
-            img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-            image_contents.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}
-            })
-
-        if self.last_question_from_user and time.time() - self.last_question_from_user_time < self.caption_interval_for_speak:
-            prompts = "请根据实时视频和说话内容，简要描述一下正在说话的人的特征、当前的场景。"
-            prompts += f"他上次的问题是：{self.last_question_from_user}"
-        else:
-            prompts = "请根据实时视频简要的描述一下正在说话的人的特征和当前的场景。"
-        # 添加文本内容
-        image_contents.append({
-            "type": "text",
-            "text": prompts
-        })
-
-        # 创建 Message 对象
-        message = Message(
-            role=MessageRole.user,
-            content=image_contents
-        )
-        response = ""
-        try:
-            # 发送消息到服务器并获取响应
-            response = await send_message_to_server([message],model=config.llm.openai_custom_mm_model)
-            logging.info(f"Server response: {response}, images sent: {len(self.image_list_for_speak)}, prompts: {prompts},\
-                         model: {config.llm.openai_custom_mm_model}")
-            self.last_caption_time_for_speak = time.time()
-            self.current_caption_for_speak = response
-
-        except Exception as e:
-            logging.error(f"Error sending images to server: {e}")
-
-        # 清空图像列表
-        self.image_list_for_speak.clear()
-        return response
-
-
     async def speakStatusChanged(self, event: agents.vad.VADEventType) -> None:
         logging.info("speech status changed: %s", event)
         if event == agents.vad.VADEventType.START_SPEAKING:
             self.capture_images_for_speak = True
-            self.image_list_for_speak.clear()
         elif event == agents.vad.VADEventType.END_SPEAKING:
             self.capture_images_for_speak = False
-            # await self.send_images_to_server()
         else:
             return
         cmd : str = None
@@ -567,15 +514,10 @@ class LiveAgent:
                 self.catch_follow_pos = False
                 continue
 
-            if len(speech.text) > 5:
-                self.last_question_from_user = speech.text
-                self.last_question_from_user_time = speech.start_time
             if speaker_id is not None and speaker_id > 0:
                 speech.text = f"[speaker_{speaker_id}] {speech.text}"
-            if config.llm.openai_custom_mm_model and time.time() - self.last_caption_time_for_speak<self.caption_interval_for_speak and self.current_caption_for_speak:
-                # asyncio.create_task(self.send_images_to_server())
-                speech.text = f"[当前会话背景:{self.current_caption_for_speak}] {speech.text}"
-                self.current_caption_for_speak = None
+            if self.video_scene_monitor:
+                self.video_scene_monitor.add_sentence(speech.text)
 
             await write_chat_to_redis(self.stream_key, text=speech.text, timestamp=speech.start_time, duration=duration, language=speech.language, srcname=chat_ext.CHAT_MEMBER_APP)
             await self.chat.send_message(

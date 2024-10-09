@@ -31,6 +31,7 @@ agents:
   log_debug: True
   max_images_for_speak: 1
   scene_check_interval: 60  # Interval in seconds for checking the scene
+  scene_check_min_interval: 30
 
 llm:
   engine: "CHATGPT"  # CHATGPT QWEN qwen_local,  qwen-plus-0919 支持 CHATGPT SDK

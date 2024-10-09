@@ -27,20 +27,40 @@ class ChatGPT(LLMBase):
             base_url = None
         super().__init__("OPENAI_API_KEY", message_capacity=message_capacity)
         self._client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
+    
+    async def generate_text(self, user_id: str, model: str = "", addtional_user_message: Message = None, use_redis_history: bool = True) -> str:
+        if not await self.prepare(user_id, model, addtional_user_message, use_redis_history):
+            return ""
+        try:
+            response = await asyncio.wait_for(
+                self._client.chat.completions.create(
+                    model=self._model,
+                    messages=self._history,
+                ),
+                self._response_timeout,
+            )
+        except Exception as e:
+            logging.error("Error in chatgpt: %s", e)
+            return ""
+        return response.choices[0].message.content
 
-    async def generate_text_streamed(self, user_id: str, model: str = "gpt-3.5-turbo-0125", addtional_user_message: Message = None, use_redis_history: bool = True) -> AsyncIterable[str]:
+
+    async def generate_text_streamed(self, user_id: str, model: str = "gpt-4o-mini", addtional_user_message: Message = None, use_redis_history: bool = True) -> AsyncIterable[str]:
         if not await self.prepare(user_id, model, addtional_user_message, use_redis_history):
             yield ""
             return
         try:
+            chat_params = {
+                "model": self._model,
+                "n": 1,
+                "stream": True,
+                "messages": self._history,
+            }
+            if config.llm.enable_openai_functions:
+                chat_params["functions"] = self._tools.get_functions_openai_style()
+            
             chat_stream = await asyncio.wait_for(
-                self._client.chat.completions.create(
-                    model=self._model,
-                    n=1,
-                    stream=True,
-                    messages=self._history,
-                    functions=self._tools.get_functions_openai_style() if config.llm.enable_openai_functions else None,
-                ),
+                self._client.chat.completions.create(**chat_params),
                 self._response_timeout,
             )
         except TimeoutError:
@@ -107,20 +127,40 @@ class ChatGPT(LLMBase):
         self._needs_interrupt = False
         self._interactions_count += 1
 
+async def simple_test(model: str):
+    client = openai.OpenAI(api_key=os.environ[config.llm.openai_custom_key_envname], base_url=config.llm.openai_custom_url)
+
+    chat_completion = client.chat.completions.create(
+        messages=[
+            {
+                "role": "user",
+                "content": "Say this is a test",
+            }
+        ],
+        model=model,
+    )
+    print(chat_completion)
+
 async def main():
-    chatgpt = ChatGPT()
+    chatgpt = ChatGPT(os.environ[config.llm.openai_custom_key_envname], config.llm.openai_custom_url)
     logging.basicConfig(
         level=logging.DEBUG,
         format='%(asctime)s - %(levelname)s [in %(pathname)s:%(lineno)d] - %(message)s',
     )
     logging.info("Starting chatgpt")
-    model = "gpt-4-0125-preview"
-    model = "gpt-3.5-turbo-0125"
+    model = "gpt-4o"
+    model = "gpt-4o-mini"
+    model = config.llm.model
     query = "从2加到10等于几？"
     query = "请帮我写一首诗, 下雪了啊"
     query = "现在外面是几度？下雨了吗？"
-    async for message in chatgpt.generate_text_streamed("user1", model, addtional_user_message=Message(content=query, role=MessageRole.user), use_redis_history=False):
+    streamed = True
+    if not streamed:
+        message = await chatgpt.generate_text("user1", model, addtional_user_message=Message(content=query, role=MessageRole.user), use_redis_history=False)
         print(message)
+    else:
+        async for message in chatgpt.generate_text_streamed("user1", model, addtional_user_message=Message(content=query, role=MessageRole.user), use_redis_history=False):
+            print(message)
 
 if __name__ == '__main__':
     asyncio.run(main())
