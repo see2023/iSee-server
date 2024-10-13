@@ -42,6 +42,7 @@ from io import BytesIO
 from llm.llm_base import Message, MessageRole
 from llm.qwen2_vl_http_server_cli import send_message_to_server
 from video_scene_monitor import VideoSceneMonitor
+from agents.llm_common import LLMMessage, MessageType
 
 font_path = "/Library/Fonts/Arial Unicode.ttf" if sys.platform == "darwin" else "arial.ttf"
 font_size = 40
@@ -179,14 +180,6 @@ class LiveAgent:
                     self.ctx.create_task(self.video_detect_worker())
                     self.ctx.create_task(self.vision_lang_worker())
 
-        async def process_chat(msg: chat_ext.ChatExtMessage):
-            logging.info("received chat message: %s", msg.message)
-            if msg.message == config.llm.vl_cmd_catch_pic:
-                # 等待提示音
-                await asyncio.sleep(3)
-                self.start_catch_pic = True
-                logging.info("start catching picture")
-        
         def unsubscribe_cb(
             track: rtc.Track,
             publication: rtc.TrackPublication,
@@ -206,7 +199,7 @@ class LiveAgent:
         self.ctx.room.on("track_subscribed", subscribe_cb)
         self.ctx.room.on("track_unsubscribed", unsubscribe_cb)
         def on_message(msg: chat_ext.ChatExtMessage):
-            asyncio.ensure_future(process_chat(msg))
+            asyncio.ensure_future(self.process_chat(msg))
         self.chat.on("message_received", on_message)
 
     async def send_to_app(self, msg: str, with_tts: bool = True, save_to_redis: bool = False):
@@ -528,7 +521,32 @@ class LiveAgent:
             await asyncio.sleep(0.001)
         await stt_stream.aclose()
 
-
+    async def process_chat(self, msg: chat_ext.ChatExtMessage):
+        logging.info("received chat message: %s", msg.message)
+        if msg.srcname == chat_ext.CHAT_MEMBER_APP:
+            return
+        if "LLMMessage" in msg.message:
+            try:
+                llm_message = LLMMessage.from_string(msg.message)
+                if isinstance(llm_message, LLMMessage):
+                    if llm_message.type == MessageType.VISUAL_ANALYSIS_REQUEST:
+                        logging.info("Received visual analysis request")
+                        if self.video_scene_monitor:
+                            self.video_scene_monitor.check_scene_immediately()
+                        else:
+                            logging.warning("Video scene monitor is not initialized")
+                    elif llm_message.type == MessageType.TEXT:
+                        # 处理普通文本消息
+                        if llm_message.content == config.llm.vl_cmd_catch_pic:
+                            # 等待提示音
+                            await asyncio.sleep(3)
+                            self.start_catch_pic = True
+                            logging.info("start catching picture")
+                    # 可以在这里添加其他消息类型的处理
+                else:
+                    logging.warning(f"Received message is not a valid LLMMessage: {msg.message}")
+            except (ValueError, SyntaxError):
+                logging.INFO(f"Failed to parse message as LLMMessage: {msg.message}")
 
 if __name__ == "__main__":
 

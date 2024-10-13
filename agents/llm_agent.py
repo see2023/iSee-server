@@ -8,7 +8,7 @@ import redis
 from db.redis_cli import get_redis_client, REDIS_CHAT_KEY, REDIS_PREFIX, REDIS_MQ_KEY
 from agents.chat_ext import CHAT_MEMBER_APP, CHAT_MEMBER_ASSITANT,ChatExtManager, ChatExtMessage
 from llm import get_llm, get_vl_LLM, LLMBase, VisualLLMBase
-from llm.llm_base import KEEP_SILENT_RESPONSE
+from llm.llm_base import KEEP_SILENT_RESPONSE, MessageRole
 from llm.llm_tools import Tools, ToolNames, ToolActions
 from typing import Callable
 from livekit import rtc
@@ -16,6 +16,8 @@ from common.http_post import get_token
 from common.tts import text_to_speech_and_visemes
 from control.simple_control import Command
 from agents.tts_manager import TTSManager
+from agents.advanced_analysis import AdvancedAnalysis
+from agents.llm_common import LLMMessage, MessageType, VISUAL_ANALYSIS_REQUEST
 
 from common.config import config
 
@@ -49,6 +51,7 @@ class MessageConsumer():
         self._app_msg_queue = asyncio.Queue[str]()
         self.tts_manager = TTSManager()
         self._task_tts = None
+        self.advanced_analysis = AdvancedAnalysis(self.llm_engine)
     
     def clear_tts_msg_queue(self):
         while not self._tts_msg_queue.empty():
@@ -126,6 +129,7 @@ class MessageConsumer():
                     if is_app_user(participant.identity):
                         self._user = participant.identity
                         self._user_sid = participant.sid
+                        self.tts_manager.set_user_sid(self._user_sid)
                         logging.info("Found app user: " + self._user)
                         break
 
@@ -139,19 +143,26 @@ class MessageConsumer():
             logging.error("Failed to get token")
             return False
 
-    async def send_to_app(self, msg: str):
+    async def send_to_app(self, msg: str, message_type: MessageType = MessageType.TEXT, save_to_redis: bool = False):
         if not self._chat:
             logging.error("No chat manager found, cannot send message to app")
             return
         if msg == KEEP_SILENT_RESPONSE:
             return
+        llm_message = LLMMessage(type=message_type, content=msg)
+        if message_type == MessageType.TEXT:
+            str_msg = msg
+        else:
+            str_msg = str(llm_message)
         chat_msg:ChatExtMessage = await self._chat.send_message(
-            message=msg, srcname=CHAT_MEMBER_ASSITANT, timestamp=time.time(),
+            message=str_msg, srcname=CHAT_MEMBER_ASSITANT, timestamp=time.time(),
         )
-        logging.info("sending message to app: %s, id: %s", msg, chat_msg.id)
-        await self.tts_manager.enqueue_message(chat_msg)
+        logging.info(f"sending message to app: {str_msg}, id: {chat_msg.id}")
+        if message_type == MessageType.TEXT:
+            await self.tts_manager.enqueue_message(chat_msg)
+            if save_to_redis:
+                await self.llm_engine.save_message_to_redis(self._user, str_msg, role=MessageRole.assistant)
 
-    
     async def handle_action(self, cmd:str, args:list = None):
         if cmd == ToolActions.VLLM:
             logging.info("Received VLLM command, start checking picture...")
@@ -225,27 +236,14 @@ class MessageConsumer():
 
     async def process_app_msg(self):
         logging.info("Start consuming app messages...")
-        # redis_client = get_redis_client()
-        # pubsub = redis_client.pubsub()
-        # await pubsub.subscribe(REDIS_MQ_KEY)
         while not quit_flag:
             await asyncio.sleep(0.001)
             if not self._user:
                 continue
 
             try:
-                try:
-                    msg_text:str = await self._app_msg_queue.get()
-                except asyncio.CancelledError:
-                    break
-                # xread loss message sometimes, change to pubsub
-                # message = await pubsub.get_message(timeout=3)
-                # if message and message['type'] =='message':
-                #     msg_text = message['data']
-                # else:
-                #         if config.agents.vision_lang_interval>0:
-                #             await self.check_new_picture()
-                #         continue
+                msg_text:str = await self._app_msg_queue.get()
+                
                 if self._speeking:
                     logging.info("Assistant is speaking, skip this message: " + msg_text)
                     continue
@@ -264,6 +262,8 @@ class MessageConsumer():
                     continue
                 self.llm_engine.set_responsing_text(msg_text)
                 self.llm_engine.clear_history()
+
+                initial_response = ""
                 try:
                     if self.llm_engine.stream_support():
                         got_response = False
@@ -276,31 +276,45 @@ class MessageConsumer():
                                     output = self.llm_engine.parse_custom_function(output)
                                     if output is None or len(output) == 0:
                                         continue
+                                initial_response += output
                                 await self.send_to_app(output)
                                 if self._callback:
                                     self._callback(output)
                     else:
-                        output = await self.llm_engine.generate_text(self._user, config.llm.model)
-                        if output:
+                        initial_response = await self.llm_engine.generate_text(self._user, config.llm.model)
+                        if initial_response:
                             self.tts_manager.clear_tts_msg_queue()
                             if config.llm.enable_custom_functions:
-                                output = self.llm_engine.parse_custom_function(output)
-                            await self.send_to_app(output)
+                                initial_response = self.llm_engine.parse_custom_function(initial_response)
+                            await self.send_to_app(initial_response)
                             if self._callback:
-                                self._callback(output)
+                                self._callback(initial_response)
+
                     await self.llm_engine.save_message_to_redis(self._user, self.llm_engine.get_output())
                     if config.llm.enable_custom_functions:
                         await self.llm_engine.handle_custom_function_output(output_callback_func=self.send_to_app, cmd_callback_func=self.handle_action)
+                    # 启动高级分析
+                    asyncio.create_task(self.advanced_analysis.process_message(
+                        self._user, msg_text, initial_response, 
+                        self.send_to_app, self.trigger_visual_analysis
+                    ))
                 except Exception as e:
                     logging.error(f"Error occurred while handling message: {e}")
             except asyncio.TimeoutError:
                 logging.info("Timeout while consuming message, retry...")
-                pass
             except Exception as e:
                 logging.error(f"Error occurred while consuming message: {e}")
 
         logging.info("Quit consuming app messages...")
 
+    async def trigger_visual_analysis(self, visual_analysis_prompt: str):
+        # 发送视觉分析请求给live_agent
+        await self.send_to_app(visual_analysis_prompt, MessageType.VISUAL_ANALYSIS_REQUEST)
+
+    async def interrupt_response(self, new_response: str):
+        # 中断当前响应并发送新的响应
+        self.tts_manager.clear_tts_msg_queue()
+        await self.send_to_app(new_response)
 
 
 async def my_callback(output):

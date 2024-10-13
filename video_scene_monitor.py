@@ -84,7 +84,7 @@ class VideoSceneMonitor:
             if scene_description.startswith("description:"):
                 scene_description = scene_description[11:]
             logging.info("Scene changed or anomaly detected, describe to other assistant")
-            await self.send_message_callback(f"{scene_description}", with_tts=False, save_to_redis=True)
+            await self.send_message_callback(f"[assistant看到场景的描述]:{{scene_description}}", with_tts=False, save_to_redis=True)
 
     async def analyze_scene(self, add_question: str = ''):
         if not self.has_new_img and add_question==self.last_add_question:
@@ -101,6 +101,8 @@ class VideoSceneMonitor:
             system_prompt += "首先考虑根据对话内容给其他Assistant描述场景，以帮助其他Assistant理解当前的场景。"
             system_prompt += "如果发现任何异常的、紧急的、有趣的、有疑问的情况，请用简短的口语告知或询问用户；否则请描述和对话相关的场景。"
             system_prompt += f"请注意回复格式必须为以下二种之一:\ntalk: 说给用户的话\ndescription: 说给其他Assistant的场景描述。"
+        else:
+            system_prompt += "请注意，你不需要直接回答问题，而是需要把你看到的和对话相关的内容描述给其他Assistant。"
 
         # system_prompt += "如果考虑后不应该打扰用户，或者不应该参与用户之间的对话，或者想说的内容与之前的雷同，仅回复:"+KEEP_SILENT_RESPONSE+"\n"
 

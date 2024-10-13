@@ -65,6 +65,24 @@ class Message:
         # 如果 content 既不是字符串也不是列表，抛出异常
         raise ValueError("Content must be either a string or a list of TextContent, ImageContent, or dict objects")
     
+    def from_dict(self, dict: dict):
+        self.role = MessageRole[dict['role']]
+        self.content = dict['content']
+    
+    def combine_content(self, content: Union[str, List[Union[TextContent, ImageContent]]]):
+        if isinstance(self.content, str) and isinstance(content, str):
+            self.content += "\n" + content
+        elif isinstance(self.content, list) and isinstance(content, list):
+            self.content.extend(content)
+        elif isinstance(self.content, str) and isinstance(content, list):
+            # 把 content 作为多模态消息追加到 self.content 后
+            self.content = [TextContent(text=self.content)] + content
+        elif isinstance(self.content, list) and isinstance(content, str):
+            # 把 content 作为单个文本消息追加到 self.content 后
+            self.content.append(TextContent(text=content))
+        else:
+            logging.error("Invalid content type for combining: %s, %s", type(self.content), type(content))
+    
     def get_content_length(self) -> int:
         # 如果 content 是字符串，直接返回其长度
         if isinstance(self.content, str):
@@ -94,6 +112,7 @@ SYSTEM_PROMPTS = {
     "default": """你叫桔子，今年1岁，是一个聪明、友善的智能助手。
     用户用语音持续输入指令，你需要分析并理解用户的意图，给出简短、精准的回复，请言简意赅的说结论，最好不要超过30个字。
     请注意语音输入可能识别不准确，需要结合语境、上下文等来判断用户的意图，尤其要注意同音字误判的纠正。
+    你还可以通过指令用摄像头观察环境，比如： 请看一下场内有几个人，他们穿的什么衣服，正在做什么。
     当前地点是:%s， 时间：%s。 """,
     "onboard": "你会在手机屏幕上以一个可爱的形象出现，手机绑在一个可移动小车上，可通过摄像头观察环境，并一直朝着目标用户移动，保持一定距离。",
     "detect": "通过摄像头你现在可以看到这些目标：%s。",
@@ -144,7 +163,7 @@ class LLMBase:
         self._model = ""
         self._history: List[dict] = []
         self._interactions_count = 0
-        self._max_interactions = 3
+        self._max_interactions = 10
         self._stream_support = stream_support
         self._custom_tool_prompt:str = None
         if config.agents.speaker_distance_threshold>0:
@@ -170,7 +189,7 @@ class LLMBase:
         self._interactions_count = 0
         self.clean_output()
     
-    async def prepare(self, user: str, model: str, addtional_user_message: Message = None, use_redis_history: bool = True) -> bool:
+    async def prepare(self, user: str, model: str, addtional_user_message: Message = None, use_redis_history: bool = True, strict_mode: bool = False, system_prompt: str = None) -> bool:
         if self._interactions_count >= self._max_interactions:
             logging.info("Max interactions reached for user_id: %s", user)
             return False
@@ -181,14 +200,26 @@ class LLMBase:
             self._model = model
         if len(self._history) < 1:
             if use_redis_history:
-                self._history = await self.build_history_from_redis(self._user)
+                self._history = await self.build_history_from_redis(self._user, strict_mode, system_prompt)
                 if self._history is None:
                     logging.info("No valid history found for user_id: %s", self._user)
                     return False
             else:
                 self._history = await self.build_system_message()
+        elif system_prompt is not None:
+            system_msg = Message(MessageRole.system, system_prompt)
+            # replace the first system message
+            self._history[0] = system_msg.to_dict()
         if addtional_user_message is not None:
-            self._history.append(addtional_user_message.to_dict())
+            # 如果历史消息中最后一个消息是用户消息，则合并消息
+            if len(self._history) > 0 and self._history[-1]['role'] == MessageRole.user.name:
+                # 从dict构造一个新消息，然后代替掉最新的消息
+                msg = Message(role=MessageRole.user, content='')
+                msg.from_dict(self._history[-1])
+                msg.combine_content(addtional_user_message.content)
+                self._history[-1] = msg.to_dict()
+            else:
+                self._history.append(addtional_user_message.to_dict())
         if not self._history or len(self._history) == 0:
             logging.info("No history found for user_id: %s", self._user)
             return False
@@ -287,10 +318,10 @@ class LLMBase:
             return text
         return text[:last_punctuation_index]
 
-    async def build_history_from_redis(self, user_id: str) -> List[dict]:
+    async def build_history_from_redis(self, user_id: str, strict_mode: bool = True, system_prompt: str = None) -> List[dict]:
         history: List[dict] = []
-        system_message = Message(MessageRole.system, await self.get_system_prompt())
-        total_length = system_message.get_content_length()
+        system_msg = Message(MessageRole.system, system_prompt if system_prompt is not None else await self.get_system_prompt())
+        total_length = system_msg.get_content_length()
         stream_key = REDIS_CHAT_KEY+user_id
         start_time = int(time.time() - config.llm.chat_history_time_limit)
         messages = await self._redis_client.xrevrange(stream_key, min='-', max='+', count=self._history_count)
@@ -305,7 +336,7 @@ class LLMBase:
                     msg = Message(content=msg_data['text'], role=MessageRole.assistant)
                 else:
                     continue
-                if first_msg_type == '' and msg_data['srcname'] == CHAT_MEMBER_ASSITANT:
+                if first_msg_type == '' and msg_data['srcname'] == CHAT_MEMBER_ASSITANT and strict_mode:
                     logging.debug(f"Skip first assistant message: {msg_data['text']}")
                     continue
                 msg_time = int(msg_data['timestamp'])/1000
@@ -329,12 +360,13 @@ class LLMBase:
                 history.insert(0, msg.to_dict())
                 total_length += msg_length
         # 如果第一个消息的role 是 assistant，需要删除
-        if history and len(history) > 1 and history[0]['role'] == MessageRole.assistant.name:
-            history.pop(0)
-        if history and len(history) > 1 and history[-1]['role'] == MessageRole.assistant.name:
-            # 最后一个消息是assistant，已经回复过了，不需要再回复
-            return None
-        history.insert(0, system_message.to_dict())
+        if strict_mode:
+            if history and len(history) > 1 and history[0]['role'] == MessageRole.assistant.name:
+                history.pop(0)
+            if history and len(history) > 1 and history[-1]['role'] == MessageRole.assistant.name:
+                # 最后一个消息是assistant，已经回复过了，不需要再回复
+                return None
+        history.insert(0, system_msg.to_dict())
         return history
     
     async def build_system_message(self) -> List[dict]:
@@ -346,7 +378,7 @@ class LLMBase:
     async def generate_text_streamed(self, user_id: str, model: str = "", addtional_user_message: Message = None, use_redis_history: bool = True) -> AsyncIterable[str]:
         pass
 
-    async def generate_text(self, user_id: str, model: str = "", addtional_user_message: Message = None, use_redis_history: bool = True) ->str:
+    async def generate_text(self, user_id: str, model: str = "", addtional_user_message: Message = None, use_redis_history: bool = True, strict_mode: bool = True,  system_prompt: str = None) ->str:
         pass
 
     async def save_message_to_redis(self, user_id: str, content: str, role: MessageRole = MessageRole.assistant):

@@ -28,8 +28,8 @@ class ChatGPT(LLMBase):
         super().__init__("OPENAI_API_KEY", message_capacity=message_capacity)
         self._client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
     
-    async def generate_text(self, user_id: str, model: str = "", addtional_user_message: Message = None, use_redis_history: bool = True) -> str:
-        if not await self.prepare(user_id, model, addtional_user_message, use_redis_history):
+    async def generate_text(self, user_id: str, model: str = "", addtional_user_message: Message = None, use_redis_history: bool = True, strict_mode: bool = True, system_prompt: str = None) -> str:
+        if not await self.prepare(user_id, model, addtional_user_message, use_redis_history, strict_mode, system_prompt):
             return ""
         try:
             response = await asyncio.wait_for(
@@ -42,11 +42,12 @@ class ChatGPT(LLMBase):
         except Exception as e:
             logging.error("Error in chatgpt: %s", e)
             return ""
+        logging.debug("chatgpt got content: %s", response.choices[0].message.content)
         return response.choices[0].message.content
 
 
-    async def generate_text_streamed(self, user_id: str, model: str = "gpt-4o-mini", addtional_user_message: Message = None, use_redis_history: bool = True) -> AsyncIterable[str]:
-        if not await self.prepare(user_id, model, addtional_user_message, use_redis_history):
+    async def generate_text_streamed(self, user_id: str, model: str = "gpt-4o-mini", addtional_user_message: Message = None, use_redis_history: bool = True, strict_mode: bool = True, system_prompt: str = None) -> AsyncIterable[str]:
+        if not await self.prepare(user_id, model, addtional_user_message, use_redis_history, strict_mode, system_prompt):
             yield ""
             return
         try:
@@ -133,9 +134,17 @@ async def simple_test(model: str):
     chat_completion = client.chat.completions.create(
         messages=[
             {
+                "role": "system",
+                "content": "You are a helpful assistant.",
+            },
+            {
+                "role": "assistant",
+                "content": "This is a test",
+            },
+            {
                 "role": "user",
-                "content": "Say this is a test",
-            }
+                "content": "Hello.",
+            },
         ],
         model=model,
     )
@@ -154,6 +163,8 @@ async def main():
     query = "从2加到10等于几？"
     query = "请帮我写一首诗, 下雪了啊"
     query = "现在外面是几度？下雨了吗？"
+    await simple_test(model)
+    return
     streamed = True
     if not streamed:
         message = await chatgpt.generate_text("user1", model, addtional_user_message=Message(content=query, role=MessageRole.user), use_redis_history=False)

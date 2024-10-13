@@ -51,8 +51,8 @@ async def write_chat_to_redis(key, text: str, srcname: str, timestamp: float, du
                     await client.xadd(key, {"text": text, "timestamp": lasttime, "duration": duration, "language": language, "srcname": srcname})
                     logging.info(f"write_chat_to_redis combined: {text} {srcname} {timestamp} {duration} {language}")
                     return
-        await client.xadd(key, {"text": text, "timestamp": int(timestamp*1000), "duration": duration, "language": language, "srcname": srcname})
-        logging.debug(f"write_chat_to_redis: {text} {srcname} {timestamp} {duration} {language}")
+        rt = await client.xadd(key, {"text": text, "timestamp": int(timestamp*1000), "duration": duration, "language": language, "srcname": srcname})
+        logging.debug(f"write_chat_to_redis: {text} {srcname} {timestamp} {duration} {language}, return: {rt}")
     except redis.exceptions.ConnectionError as e:
         logging.error(f"Redis connection error: {e}")
     except Exception as e:
