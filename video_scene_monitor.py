@@ -26,6 +26,7 @@ class VideoSceneMonitor:
         self.immediate_check_event = asyncio.Event()
         self.enalbe_self_reaction = enable_self_reaction
         self.last_add_question = ''
+        self._add_question = ''
         self.last_response_str = ''
 
     def add_sentence(self, sentence: str, from_user: bool = True, max_len: int = 256):
@@ -44,27 +45,29 @@ class VideoSceneMonitor:
             try:
                 await asyncio.wait_for(self.immediate_check_event.wait(), timeout=self.interval)
             except asyncio.TimeoutError:
-                pass
+                self._add_question = ''
             finally:
                 self.immediate_check_event.clear()
-                await self.check_scene()
+                await self.check_scene(self._add_question)
         logging.info("VideoSceneMonitor monitoring stopped")
 
-    def check_scene_immediately(self):
+    def check_scene_immediately(self, add_question: str = ''):
+        self._add_question = add_question
         if self.monitoring:
+            logging.info("check scene immediately, add question: %s", add_question)
             self.immediate_check_event.set()
 
     def stop_monitoring(self):
         self.monitoring = False
 
-    async def check_scene(self):
+    async def check_scene(self, add_question: str = ''):
         current_time = time.time()
         if current_time - self.last_check_time < self.min_interval:
             logging.info(f"Scene check too frequent, skip, last check time: {self.last_check_time}, current time: {current_time}, min interval: {self.min_interval}")
             return
         self.last_check_time = current_time
 
-        scene_description = await self.analyze_scene()
+        scene_description = await self.analyze_scene(add_question)
         if scene_description is None:
             logging.error("Scene description is None")
             return
@@ -84,7 +87,7 @@ class VideoSceneMonitor:
             if scene_description.startswith("description:"):
                 scene_description = scene_description[11:]
             logging.info("Scene changed or anomaly detected, describe to other assistant")
-            await self.send_message_callback(f"[assistant看到场景的描述]:{{scene_description}}", with_tts=False, save_to_redis=True)
+            await self.send_message_callback(f"[assistant看到场景的描述]:({scene_description})", with_tts=False, save_to_redis=True)
 
     async def analyze_scene(self, add_question: str = ''):
         if not self.has_new_img and add_question==self.last_add_question:

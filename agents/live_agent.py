@@ -372,10 +372,11 @@ class LiveAgent:
                 should_catch_for_scene = False
             if not should_catch_for_detect and not should_catch_for_speak and not should_catch_for_scene:
                 continue
-            logging.debug("received video frame: %d x %d, catch for detect: %s, catch for speak: %s", frame.width, frame.height, should_catch_for_detect, should_catch_for_speak)
+            logging.debug("received video frame: %d x %d, catch for detect: %s, catch for speak: %s, catch for scene: %s", frame.width, frame.height, should_catch_for_detect, should_catch_for_speak, should_catch_for_scene)
             try:
                 img = YoloV8Detector.VidioFrame_to_Image(frame)
                 if not img:
+                    logging.error("got an error when convert video frame to image")
                     continue
                 if should_catch_for_detect:
                     last_catch_time = current_time
@@ -431,7 +432,8 @@ class LiveAgent:
     async def speakStatusChanged(self, event: agents.vad.VADEventType) -> None:
         logging.info("speech status changed: %s", event)
         if event == agents.vad.VADEventType.START_SPEAKING:
-            self.capture_images_for_speak = True
+            # self.capture_images_for_speak = True
+            pass
         elif event == agents.vad.VADEventType.END_SPEAKING:
             self.capture_images_for_speak = False
         else:
@@ -530,9 +532,12 @@ class LiveAgent:
                 llm_message = LLMMessage.from_string(msg.message)
                 if isinstance(llm_message, LLMMessage):
                     if llm_message.type == MessageType.VISUAL_ANALYSIS_REQUEST:
-                        logging.info("Received visual analysis request")
+                        logging.info("Received visual analysis request, content: %s", llm_message.content)
                         if self.video_scene_monitor:
-                            self.video_scene_monitor.check_scene_immediately()
+                            # 强制检查场景，等待100毫秒后发送
+                            self.last_scene_check_time = 0
+                            await asyncio.sleep(0.1)
+                            self.video_scene_monitor.check_scene_immediately(llm_message.content)
                         else:
                             logging.warning("Video scene monitor is not initialized")
                     elif llm_message.type == MessageType.TEXT:
