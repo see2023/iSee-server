@@ -25,6 +25,7 @@ class AdvancedAnalysis:
         self._analysis_in_progress = False
         self.current_analysis_tree: AnalysisTree = None
         self._user = ''
+        self.conversation_summary = ""
 
     def is_response_similar_by_difflib(self, response1: str, response2: str, threshold: float = 0.8) -> bool:
         """
@@ -58,16 +59,22 @@ class AdvancedAnalysis:
         :return: 分析结果字典
         """
         system_prompts = {
-            "response_similarity": """
+            "response_similarity": f"""
             You are an AI assistant tasked with evaluating the similarity of two responses. 
+            
+            Previous conversation summary: {self.conversation_summary}
+
             Analyze the given responses and determine if they are similar in content and intent.
             Provide your analysis in the following format:
             
             is_similar: [Yes/No]
             reason: [Your explanation here]
             """,
-            "followup_necessity": """
+            "followup_necessity": f"""
             You are an AI assistant tasked with evaluating the necessity of a follow-up question.
+            
+            Previous conversation summary: {self.conversation_summary}
+
             Analyze the given conversation and proposed follow-up question, and determine if the follow-up is necessary.
             Provide your analysis in the following format:
             
@@ -176,14 +183,18 @@ class AdvancedAnalysis:
         system_prompt = f"""
         You are an AI assistant. Analyze the following conversation and provide insights:
 
-        1. Does the last response need improvement? If so, why?
-        2. Is visual analysis needed for better understanding or response? If so, what kind?
-        3. Are there any topics or questions that need follow-up?
-        4. What is the user's current emotional state or intent?
+        Previous conversation summary: {self.conversation_summary}
+
+        1. Provide a brief, objective summary of the current conversation.
+        2. Does the last response need improvement? If so, why?
+        3. Is visual analysis needed for better understanding or response? If so, what kind?
+        4. Are there any topics or questions that need follow-up?
+        5. What is the user's current emotional state or intent?
 
         Provide your analysis in a structured format like the examples below:
 
         Example 1:
+        summary: The user asked about dinner time, and the assistant provided ...
         needs_improvement: Yes
         improvement_reason: The response was off-topic and didn't address the user's question about dinner time.
         needs_visual_analysis: No
@@ -193,6 +204,7 @@ class AdvancedAnalysis:
         user_state: Seeking information about dinner time
 
         Example 2:
+        summary: The user inquired about weather data, and the assistant ...
         needs_improvement: No
         improvement_reason: N/A
         needs_visual_analysis: Yes
@@ -201,14 +213,20 @@ class AdvancedAnalysis:
         followup_topic: N/A
         user_state: Curious about weather data
 
-        Now, analyze the conversation and provide your insights in the same format, please note that the history conversation is not required to follow the format, but your latest response must strictly follow the above format.
+        Now, analyze the conversation and provide your insights in the same format. Your latest response must strictly follow the above format.
         """  
 
         analysis = await self.llm_engine.generate_text(user, config.llm.model, strict_mode=False, system_prompt=system_prompt)
-        return self.parse_analysis(analysis)
+        parsed_analysis = self.parse_analysis(analysis)
+        
+        # 更新 LLMBase 中的对话摘要
+        self.llm_engine.set_conversation_summary(parsed_analysis['summary'])
+        
+        return parsed_analysis
 
     def parse_analysis(self, analysis: str) -> Dict:
         result = {
+            "summary": "",
             "needs_improvement": False,
             "improvement_reason": "",
             "needs_visual_analysis": False,
@@ -229,7 +247,9 @@ class AdvancedAnalysis:
             key = key.strip().lower()
             value = value.strip()
             
-            if key == 'needs_improvement':
+            if key == 'summary':
+                result['summary'] = value
+            elif key == 'needs_improvement':
                 result['needs_improvement'] = value.lower() == 'yes'
             elif key == 'improvement_reason':
                 result['improvement_reason'] = value if value.lower() != 'n/a' else ""
@@ -243,6 +263,9 @@ class AdvancedAnalysis:
                 result['followup_topic'] = value if value.lower() != 'n/a' else ""
             elif key == 'user_state':
                 result['user_state'] = value
+        
+        # 更新对话摘要
+        self.conversation_summary = result['summary']
         
         return result
 
@@ -279,3 +302,4 @@ class AdvancedAnalysis:
     async def process_lang_graph(self):
         # Implement LangGraph processing logic
         pass
+

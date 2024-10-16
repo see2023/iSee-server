@@ -168,6 +168,7 @@ class LLMBase:
         self._custom_tool_prompt:str = None
         if config.agents.speaker_distance_threshold>0:
             self.set_custom_tool_prompt(SYSTEM_PROMPTS['speaker'])
+        self._conversation_summary = ""  # 对话摘要字段
     
     def stream_support(self) -> bool:
         return self._stream_support
@@ -206,10 +207,14 @@ class LLMBase:
                     return False
             else:
                 self._history = await self.build_system_message()
-        elif system_prompt is not None:
-            system_msg = Message(MessageRole.system, system_prompt)
-            # replace the first system message
-            self._history[0] = system_msg.to_dict()
+        else:
+            if system_prompt:
+                system_msg = Message(MessageRole.system, system_prompt)
+                # replace the first system message
+                self._history[0] = system_msg.to_dict()
+            else:
+                # 由于会话摘要可能更新，所以需要替换 system_msg
+                self._history[0] = Message(MessageRole.system, await self.get_system_prompt()).to_dict()
         if addtional_user_message is not None:
             # 如果历史消息中最后一个消息是用户消息，则合并消息
             if len(self._history) > 0 and self._history[-1]['role'] == MessageRole.user.name:
@@ -250,6 +255,8 @@ class LLMBase:
                 prompt_type = "default"
         detected_names = await get_detected_names_from_redis()
         default_prompt = SYSTEM_PROMPTS['default'] % (config.llm.location,  get_lunar())
+        if self._conversation_summary:
+            default_prompt += f"\n当前对话摘要：{self._conversation_summary}"
         if detected_names and len(detected_names) >= 1:
             default_prompt += SYSTEM_PROMPTS["detect"] % (detected_names)
         if prompt_type == "default":
@@ -491,8 +498,9 @@ class LLMBase:
                 if output_callback_func:
                     await output_callback_func(fn_result)
 
-
-
+    def set_conversation_summary(self, summary: str):
+        """设置对话摘要"""
+        self._conversation_summary = summary
 
 
 class VisualLLMBase(LLMBase):
@@ -529,3 +537,5 @@ class VisualLLMBase(LLMBase):
 
     async def call_mml_with_local_file(self, user_id: str,  files: List[str], model: str = "qwen-vl-plus") -> str:
         pass
+
+
