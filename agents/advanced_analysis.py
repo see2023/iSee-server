@@ -85,7 +85,6 @@ class AdvancedAnalysis:
         }
 
         self.analysis_llm.clear_history()
-        self.analysis_llm.add_history(Message(role=MessageRole.system, content=system_prompts[analysis_type]))
 
         if analysis_type == "response_similarity":
             self.analysis_llm.add_history(Message(role=MessageRole.user, content=f"Response 1: {kwargs['response1']}\nResponse 2: {kwargs['response2']}\nAre these responses similar? Please provide your analysis."))
@@ -94,7 +93,7 @@ class AdvancedAnalysis:
             self.analysis_llm.add_history(Message(role=MessageRole.assistant, content=f"Assistant response: {kwargs['assistant_response']}"))
             self.analysis_llm.add_history(Message(role=MessageRole.user, content=f"Proposed follow-up question: {kwargs['followup_question']}\nIs this follow-up question necessary? Please provide your analysis."))
 
-        analysis = await self.analysis_llm.generate_text(self._user, model=config.llm.model, strict_mode=False)
+        analysis = await self.analysis_llm.generate_text(self._user, model=config.llm.model, strict_mode=False, use_redis_history=False, system_prompt=system_prompts[analysis_type])
         return self._parse_llm_analysis(analysis, analysis_type)
 
     def _parse_llm_analysis(self, analysis: str, analysis_type: str) -> Dict:
@@ -183,15 +182,16 @@ class AdvancedAnalysis:
         system_prompt = f"""
         You are an AI assistant. Analyze the following conversation and provide insights:
 
-        Previous conversation summary: {self.conversation_summary}
+        Previous conversation summary: [ {self.conversation_summary}]
 
+        Analyze the conversation based on the following criteria:
         1. Provide a brief, objective summary of the current conversation.
         2. Does the last response need improvement? If so, why?
         3. Is visual analysis needed for better understanding or response? If so, what kind?
         4. Are there any topics or questions that need follow-up?
         5. What is the user's current emotional state or intent?
 
-        Provide your analysis in a structured format like the examples below:
+        Provide your analysis in a structured, single-line format for each point. Be detailed, well-reasoned, and comprehensive in your analysis. Example format:
 
         Example 1:
         summary: The user asked about dinner time, and the assistant provided ...
