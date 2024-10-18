@@ -91,3 +91,32 @@ async def get_detected_names_from_redis():
     except Exception as e:
         logging.error(f"Redis error: {e}") 
         return ""
+
+async def write_summary_and_state_to_redis(user_id: str, summary: str, user_state: str):
+    client = get_redis_client()
+    try:
+        await client.set(f"{REDIS_CHAT_KEY}{user_id}:summary", summary)
+        await client.set(f"{REDIS_CHAT_KEY}{user_id}:user_state", user_state)
+        logging.info(f"Wrote summary and user_state to Redis for user {user_id}")
+    except redis.exceptions.ConnectionError as e:
+        logging.error(f"Redis connection error: {e}")
+    except Exception as e:
+        logging.error(f"Redis error: {e}")
+
+async def get_summary_and_state_from_redis(user_id: str):
+    client = get_redis_client()
+    try:
+        summary = await client.get(f"{REDIS_CHAT_KEY}{user_id}:summary")
+        user_state = await client.get(f"{REDIS_CHAT_KEY}{user_id}:user_state")
+        logging.info(f"Read summary and user_state from Redis for user {user_id}")
+        if not summary:
+            summary = ""
+        if not user_state:
+            user_state = ""
+        return summary, user_state
+    except redis.exceptions.ConnectionError as e:
+        logging.error(f"Redis connection error: {e}")
+        return None, None
+    except Exception as e:
+        logging.error(f"Redis error: {e}")
+        return None, None

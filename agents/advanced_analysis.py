@@ -5,6 +5,8 @@ from llm import get_llm, LLMBase
 from common.config import config
 from llm.llm_base import Message, MessageRole
 import difflib
+from db.redis_cli import write_summary_and_state_to_redis, get_summary_and_state_from_redis
+from common.search import search
 
 class AnalysisNode:
     def __init__(self, content: str, children: List['AnalysisNode'] = None):
@@ -26,6 +28,7 @@ class AdvancedAnalysis:
         self.current_analysis_tree: AnalysisTree = None
         self._user = ''
         self.conversation_summary = ""
+        self.user_state = ""
 
     def is_response_similar_by_difflib(self, response1: str, response2: str, threshold: float = 0.8) -> bool:
         """
@@ -85,6 +88,7 @@ class AdvancedAnalysis:
         }
 
         self.analysis_llm.clear_history()
+        self.analysis_llm.add_history(Message(role=MessageRole.system, content=system_prompts[analysis_type]))
 
         if analysis_type == "response_similarity":
             self.analysis_llm.add_history(Message(role=MessageRole.user, content=f"Response 1: {kwargs['response1']}\nResponse 2: {kwargs['response2']}\nAre these responses similar? Please provide your analysis."))
@@ -133,20 +137,25 @@ class AdvancedAnalysis:
                               send_to_app: Callable, 
                               trigger_visual_analysis: Callable):
         logging.info("AdvancedAnalysis processing message: " + user_message + ", assistant_response: " + assistant_response)
+        await self.set_user(user)
         if self.is_analysis_in_progress():
             logging.info("AdvancedAnalysis analysis in progress, skip")
             return
         self._analysis_in_progress = True
-        self._user = user
         self.llm_engine.add_history(Message(role=MessageRole.assistant, content=assistant_response))
         self.llm_engine.add_history(Message(role=MessageRole.user, content='Please analyze the conversation and provide insights in the format required by the system prompt'))
         try:
-            analysis_result = await self.analyze_conversation(user)
+            analysis_result = await self.analyze_conversation()
             self.llm_engine.clear_history()
+            
+            search_results = None
+            if analysis_result['needs_search']:
+                logging.info(f"AdvancedAnalysis needs_search: {analysis_result['search_keywords']}")
+                search_results = await search(analysis_result['search_keywords'])
             
             if analysis_result['needs_improvement']:
                 logging.info("AdvancedAnalysis needs_improvement: " + analysis_result['improvement_reason'])
-                improved_response = await self.improve_response(user, user_message, assistant_response, analysis_result)
+                improved_response = await self.improve_response(user, analysis_result, search_results)
                 
                 # 使用 difflib 判断改进的回复是否与原始回复相似
                 if not self.is_response_similar_by_difflib(assistant_response, improved_response):
@@ -178,11 +187,13 @@ class AdvancedAnalysis:
         finally:
             self._analysis_in_progress = False
 
-    async def analyze_conversation(self, user: str) -> Dict:
+    async def analyze_conversation(self) -> Dict:
         system_prompt = f"""
+        {self.llm_engine.get_time_and_location()}
         You are an AI assistant. Analyze the following conversation and provide insights:
 
         Previous conversation summary: [ {self.conversation_summary}]
+        Previous user state: [ {self.user_state}]
 
         Analyze the conversation based on the following criteria:
         1. Provide a brief, objective summary of the current conversation.
@@ -190,6 +201,7 @@ class AdvancedAnalysis:
         3. Is visual analysis needed for better understanding or response? If so, what kind?
         4. Are there any topics or questions that need follow-up?
         5. What is the user's current emotional state or intent?
+        6. Is additional information from an internet search needed? If so, provide search keywords.
 
         Provide your analysis in a structured, single-line format for each point. Be detailed, well-reasoned, and comprehensive in your analysis. Example format:
 
@@ -202,25 +214,32 @@ class AdvancedAnalysis:
         needs_followup: Yes
         followup_topic: Specific dinner time
         user_state: Seeking information about dinner time
+        needs_search: No
+        search_keywords: N/A
 
         Example 2:
         summary: The user inquired about weather data, and the assistant ...
         needs_improvement: No
         improvement_reason: N/A
         needs_visual_analysis: Yes
-        visual_analysis_reason: We can see what the user is doing and feeling to help answering the question.
+        visual_analysis_reason: We can see what the user is doing and feeling to help answering the question if needed.
         needs_followup: No
         followup_topic: N/A
         user_state: Curious about weather data
+        needs_search: Yes
+        search_keywords: reasonable and short keywords for improving the response if needed.
 
         Now, analyze the conversation and provide your insights in the same format. Your latest response must strictly follow the above format.
         """  
 
-        analysis = await self.llm_engine.generate_text(user, config.llm.model, strict_mode=False, system_prompt=system_prompt)
+        analysis = await self.llm_engine.generate_text(self._user, config.llm.model, strict_mode=False, system_prompt=system_prompt)
         parsed_analysis = self.parse_analysis(analysis)
         
         # 更新 LLMBase 中的对话摘要
         self.llm_engine.set_conversation_summary(parsed_analysis['summary'])
+        
+        # Store summary and user_state in Redis
+        await write_summary_and_state_to_redis(self._user, parsed_analysis['summary'], parsed_analysis['user_state'])
         
         return parsed_analysis
 
@@ -233,7 +252,9 @@ class AdvancedAnalysis:
             "visual_analysis_reason": "",
             "needs_followup": False,
             "followup_topic": "",
-            "user_state": ""
+            "user_state": "",
+            "needs_search": False,
+            "search_keywords": ""
         }
         
         lines = analysis.strip().split('\n')
@@ -263,17 +284,26 @@ class AdvancedAnalysis:
                 result['followup_topic'] = value if value.lower() != 'n/a' else ""
             elif key == 'user_state':
                 result['user_state'] = value
+            elif key == 'needs_search':
+                result['needs_search'] = value.lower() == 'yes'
+            elif key == 'search_keywords':
+                result['search_keywords'] = value if value.lower() != 'n/a' else ""
         
         # 更新对话摘要
         self.conversation_summary = result['summary']
         
         return result
 
-    async def improve_response(self, user: str, user_message: str, assistant_response: str, analysis_result: Dict) -> str:
+    async def improve_response(self, user: str, analysis_result: Dict, search_results: str = None) -> str:
         prompt = f"""Based on the following analysis, generate an improved response:
         Analysis: {analysis_result['improvement_reason']}
-        Provide an improved response that addresses the identified issues.
         """
+
+        if search_results:
+            prompt += f"\nSearch Results: {search_results}\n"
+            prompt += "Incorporate relevant information from the search results if available."
+
+        prompt += "\nProvide an improved response that addresses the identified issues."
 
         prompt_message = Message(role=MessageRole.user, content=prompt)
         improved_response = await self.llm_engine.generate_text(user, config.llm.model, addtional_user_message=prompt_message, strict_mode=False)
@@ -299,7 +329,14 @@ class AdvancedAnalysis:
         # Implement thought tree building logic
         pass
 
-    async def process_lang_graph(self):
-        # Implement LangGraph processing logic
-        pass
+
+    async def set_user(self, user: str):
+        if self._user != user:
+            self._user = user
+            # Read summary and user_state from Redis
+            self.conversation_summary, self.user_state = await get_summary_and_state_from_redis(user)
+
+
+
+
 

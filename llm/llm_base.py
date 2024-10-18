@@ -247,6 +247,9 @@ class LLMBase:
     def get_history(self) -> List[dict]:
         return self._history
     
+    def get_time_and_location(self) -> str:
+        return f"当前地点是:%s， 时间：%s。 " % (config.llm.location,  get_lunar())
+
     async def get_system_prompt(self, prompt_type=None) -> str:
         if prompt_type is None:
             if config.llm.enable_custom_functions and self._function_working:
