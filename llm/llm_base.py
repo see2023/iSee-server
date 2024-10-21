@@ -124,7 +124,7 @@ SYSTEM_PROMPTS = {
     """,
     "speaker" : '''
     当前对话可能有多人参与，如果检测到说话人，内容会以 speaker_1 speaker_2 的形式开头。
-    此时，如果你觉得本轮对话不需要参与回复，请答复内容： keep_silent. 比如：
+    此时，如果你觉得本轮对话不需要参与回复，请答复内容： keep_silent 比如：
     user: [speaker_1] 爸爸，你吃饭了吗？
     assistant:  keep_silent
     user: [speaker_2] 我...
@@ -236,7 +236,7 @@ class LLMBase:
     def add_history(self, message: Message):
         # check history length
         if len(self._history) >= self._history_count and len(self._history) > 3:
-            logging.info("History length exceeds capacity, drop oldest message: %s", self._history[0]['content'])
+            logging.info("History length exceeds capacity, drop oldest message: %s", self._history[1]['content'])
             self._history = [self._history[0]] + self._history[3:]
         # check message length
         if message.get_content_length() + sum(map(lambda x: len(x['content']), self._history)) > self._message_capacity:

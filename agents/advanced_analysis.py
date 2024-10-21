@@ -7,28 +7,31 @@ from llm.llm_base import Message, MessageRole
 import difflib
 from db.redis_cli import write_summary_and_state_to_redis, get_summary_and_state_from_redis
 from common.search import search
+from agents.task_manager import TaskManager
 
-class AnalysisNode:
-    def __init__(self, content: str, children: List['AnalysisNode'] = None):
-        self.content = content
-        self.children = children or []
-
-class AnalysisTree:
-    def __init__(self, root: AnalysisNode):
-        self.root = root
-
-    def add_child(self, parent: AnalysisNode, child: AnalysisNode):
-        parent.children.append(child)
 
 class AdvancedAnalysis:
-    def __init__(self, llm_engine: LLMBase):
+    def __init__(self, llm_engine: LLMBase, send_to_app: Callable, trigger_visual_analysis: Callable):
         self.llm_engine = llm_engine
         self.analysis_llm = get_llm()  # 单独的 LLM 客户端
         self._analysis_in_progress = False
-        self.current_analysis_tree: AnalysisTree = None
         self._user = ''
         self.conversation_summary = ""
         self.user_state = ""
+        self.send_to_app = send_to_app
+        self.trigger_visual_analysis = trigger_visual_analysis
+        
+        # 初始化 TaskManager
+        self.task_manager = TaskManager(
+            self.llm_engine,
+            send_to_app=self.send_to_app,
+            trigger_visual_analysis=self.trigger_visual_analysis,
+            is_analysis_in_progress=lambda: self._analysis_in_progress
+        )
+        
+        # 启动 TaskManager 的周期执行任务
+        if config.agents.task_check_interval > 0:
+            asyncio.create_task(self.task_manager.task_check_loop())
 
     def is_response_similar_by_difflib(self, response1: str, response2: str, threshold: float = 0.8) -> bool:
         """
@@ -68,6 +71,7 @@ class AdvancedAnalysis:
             Previous conversation summary: {self.conversation_summary}
 
             Analyze the given responses and determine if they are similar in content and intent.
+            Note that sometimes the responses are similar, for example, the temperature is 20 degrees and 2 degrees, but they are not the same, you should return No.
             Provide your analysis in the following format:
             
             is_similar: [Yes/No]
@@ -110,9 +114,9 @@ class AdvancedAnalysis:
                 value = value.strip()
                 
                 if analysis_type == "response_similarity" and key == 'is_similar':
-                    result['is_similar'] = value.lower() == 'yes'
+                    result['is_similar'] = self.string_means_yes(value)
                 elif analysis_type == "followup_necessity" and key == 'is_necessary':
-                    result['is_necessary'] = value.lower() == 'yes'
+                    result['is_necessary'] = self.string_means_yes(value)
                 elif key == 'reason':
                     result['reason'] = value
 
@@ -133,9 +137,7 @@ class AdvancedAnalysis:
                                           followup_question=followup_question)
         return result.get('is_necessary', False)
 
-    async def process_message(self, user: str, user_message: str, assistant_response: str, 
-                              send_to_app: Callable, 
-                              trigger_visual_analysis: Callable):
+    async def process_message(self, user: str, user_message: str, assistant_response: str):
         logging.info("AdvancedAnalysis processing message: " + user_message + ", assistant_response: " + assistant_response)
         await self.set_user(user)
         if self.is_analysis_in_progress():
@@ -150,8 +152,8 @@ class AdvancedAnalysis:
             
             search_results = None
             if analysis_result['needs_search']:
-                logging.info(f"AdvancedAnalysis needs_search: {analysis_result['search_keywords']}")
                 search_results = await search(analysis_result['search_keywords'])
+                logging.info(f"AdvancedAnalysis needs_search: {analysis_result['search_keywords']}, search_results: {search_results}")
             
             if analysis_result['needs_improvement']:
                 logging.info("AdvancedAnalysis needs_improvement: " + analysis_result['improvement_reason'])
@@ -161,17 +163,17 @@ class AdvancedAnalysis:
                 if not self.is_response_similar_by_difflib(assistant_response, improved_response):
                     # 使用 LLM 进行二次确认
                     if not await self.is_response_similar_by_llm(assistant_response, improved_response):
-                        await send_to_app(improved_response, save_to_redis=True)
+                        await self.send_to_app(improved_response, save_to_redis=True)
                         self.llm_engine.add_history(Message(role=MessageRole.assistant, content=improved_response))
                     else:
-                        logging.info("LLM determined the improved response is too similar, skipping")
+                        logging.info(f"LLM determined the improved response is too similar, skipping: {improved_response}")
                 else:
-                    logging.info("Improved response is too similar to the original (difflib), skipping")
+                    logging.info(f"Improved response is too similar to the original (difflib), skipping: {improved_response}")
             
             if analysis_result['needs_visual_analysis']:
                 logging.info("AdvancedAnalysis needs_visual_analysis: " + analysis_result['visual_analysis_reason'])
                 visual_analysis_prompt = analysis_result['visual_analysis_reason']
-                await trigger_visual_analysis(visual_analysis_prompt)
+                await self.trigger_visual_analysis(visual_analysis_prompt)
             
             if analysis_result['needs_followup']:
                 logging.info("AdvancedAnalysis needs_followup: " + analysis_result['followup_topic'])
@@ -179,10 +181,14 @@ class AdvancedAnalysis:
                 
                 # 使用 LLM 判断是否有必要发送跟进问题
                 if await self.is_followup_necessary(user_message, assistant_response, followup_question):
-                    await send_to_app(followup_question, save_to_redis=True)
+                    await self.send_to_app(followup_question, save_to_redis=True)
                     self.llm_engine.add_history(Message(role=MessageRole.assistant, content=followup_question))
                 else:
-                    logging.info("Follow-up question is not necessary, skipping")
+                    logging.info(f"Follow-up question is not necessary, skipping: {followup_question}")
+
+            # 触发任务检查
+            if config.agents.task_check_interval > 0:
+                self.task_manager.trigger_task_check()
 
         finally:
             self._analysis_in_progress = False
@@ -197,11 +203,11 @@ class AdvancedAnalysis:
 
         Analyze the conversation based on the following criteria:
         1. Provide a brief, objective summary of the current conversation.
-        2. Does the last response need improvement? If so, why?
-        3. Is visual analysis needed for better understanding or response? If so, what kind?
-        4. Are there any topics or questions that need follow-up?
+        2. Does the last response need improvement? [Yes/No] If so, why?
+        3. Is visual analysis needed for better understanding or response? [Yes/No] If so, what kind?
+        4. Are there any topics or questions that need follow-up? [Yes/No]
         5. What is the user's current emotional state or intent?
-        6. Is additional information from an internet search needed? If so, provide search keywords.
+        6. Is additional information from an internet search needed? [Yes/No] If so, provide search keywords.
 
         Provide your analysis in a structured, single-line format for each point. Be detailed, well-reasoned, and comprehensive in your analysis. Example format:
 
@@ -232,7 +238,9 @@ class AdvancedAnalysis:
         Now, analyze the conversation and provide your insights in the same format. Your latest response must strictly follow the above format.
         """  
 
-        analysis = await self.llm_engine.generate_text(self._user, config.llm.model, strict_mode=False, system_prompt=system_prompt)
+        prompt_message = Message(role=MessageRole.user, content='Please analyze the conversation and provide insights in the format required by the system prompt')
+        analysis = await self.llm_engine.generate_text(self._user, config.llm.model, strict_mode=False, use_redis_history=True, system_prompt=system_prompt, addtional_user_message=prompt_message)
+        logging.info("AdvancedAnalysis analysis: " + analysis)
         parsed_analysis = self.parse_analysis(analysis)
         
         # 更新 LLMBase 中的对话摘要
@@ -242,6 +250,9 @@ class AdvancedAnalysis:
         await write_summary_and_state_to_redis(self._user, parsed_analysis['summary'], parsed_analysis['user_state'])
         
         return parsed_analysis
+    
+    def string_means_yes(self, string: str) -> bool:
+        return string.lower() in ['true', 'yes', '是']
 
     def parse_analysis(self, analysis: str) -> Dict:
         result = {
@@ -271,21 +282,21 @@ class AdvancedAnalysis:
             if key == 'summary':
                 result['summary'] = value
             elif key == 'needs_improvement':
-                result['needs_improvement'] = value.lower() == 'yes'
+                result['needs_improvement'] = self.string_means_yes(value)
             elif key == 'improvement_reason':
                 result['improvement_reason'] = value if value.lower() != 'n/a' else ""
             elif key == 'needs_visual_analysis':
-                result['needs_visual_analysis'] = value.lower() == 'yes'
+                result['needs_visual_analysis'] = self.string_means_yes(value)
             elif key == 'visual_analysis_reason':
                 result['visual_analysis_reason'] = value if value.lower() != 'n/a' else ""
             elif key == 'needs_followup':
-                result['needs_followup'] = value.lower() == 'yes'
+                result['needs_followup'] = self.string_means_yes(value)
             elif key == 'followup_topic':
                 result['followup_topic'] = value if value.lower() != 'n/a' else ""
             elif key == 'user_state':
                 result['user_state'] = value
             elif key == 'needs_search':
-                result['needs_search'] = value.lower() == 'yes'
+                result['needs_search'] = self.string_means_yes(value)
             elif key == 'search_keywords':
                 result['search_keywords'] = value if value.lower() != 'n/a' else ""
         
@@ -303,7 +314,7 @@ class AdvancedAnalysis:
             prompt += f"\nSearch Results: {search_results}\n"
             prompt += "Incorporate relevant information from the search results if available."
 
-        prompt += "\nProvide an improved response that addresses the identified issues."
+        prompt += "\nProvide an improved response that addresses the identified issues. Don't repeat what you've already said."
 
         prompt_message = Message(role=MessageRole.user, content=prompt)
         improved_response = await self.llm_engine.generate_text(user, config.llm.model, addtional_user_message=prompt_message, strict_mode=False)
@@ -324,19 +335,11 @@ class AdvancedAnalysis:
     def is_analysis_in_progress(self) -> bool:
         return self._analysis_in_progress
 
-    # Future methods for implementing thought tree or LangGraph processing
-    async def build_thought_tree(self, root_thought: str):
-        # Implement thought tree building logic
-        pass
-
-
     async def set_user(self, user: str):
         if self._user != user:
             self._user = user
+            if config.agents.task_check_interval > 0:
+                await self.task_manager.set_user(user)
             # Read summary and user_state from Redis
             self.conversation_summary, self.user_state = await get_summary_and_state_from_redis(user)
-
-
-
-
 

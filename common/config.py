@@ -49,6 +49,8 @@ class AgentsConfig:
             max_images_for_speak: int,
             scene_check_interval: int,
             scene_check_min_interval: int,
+            task_check_interval: int,
+            task_check_min_interval: int,
     ):
         self.show_detected_results = show_detected_results
         self.yolo_verbose = yolo_verbose
@@ -73,6 +75,9 @@ class AgentsConfig:
         self.max_images_for_speak = max_images_for_speak
         self.scene_check_interval = scene_check_interval
         self.scene_check_min_interval = scene_check_min_interval
+        self.task_check_interval = task_check_interval
+        self.task_check_min_interval = task_check_min_interval
+
     @classmethod
     def from_dict(cls, config_dict: Dict[str, any]):
         return cls(**config_dict)

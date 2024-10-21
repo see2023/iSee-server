@@ -51,7 +51,11 @@ class MessageConsumer():
         self._app_msg_queue = asyncio.Queue[str]()
         self.tts_manager = TTSManager()
         self._task_tts = None
-        self.advanced_analysis = AdvancedAnalysis(self.llm_engine)
+        self.advanced_analysis = AdvancedAnalysis(
+            self.llm_engine,
+            send_to_app=self.send_to_app,
+            trigger_visual_analysis=self.trigger_visual_analysis
+        )
     
     def clear_tts_msg_queue(self):
         while not self._tts_msg_queue.empty():
@@ -295,8 +299,7 @@ class MessageConsumer():
                         await self.llm_engine.handle_custom_function_output(output_callback_func=self.send_to_app, cmd_callback_func=self.handle_action)
                     # 启动高级分析
                     asyncio.create_task(self.advanced_analysis.process_message(
-                        self._user, msg_text, initial_response, 
-                        self.send_to_app, self.trigger_visual_analysis
+                        self._user, msg_text, initial_response
                     ))
                 except Exception as e:
                     logging.error(f"Error occurred while handling message: {e}")
