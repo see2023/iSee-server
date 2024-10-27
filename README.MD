@@ -1,6 +1,6 @@
 # Demo 
 
-* [视频效果](https://www.bilibili.com/video/BV1s4421F7Hn/?vd_source=404c3b2266008e965fbdc06a4f0b001e)
+* [视频效果](https://www.bilibili.com/video/BV1VE1hYwETr/)
 * [GPT-SoVITS 表情测试](https://www.bilibili.com/video/BV1GD42177B9/)
 
 
