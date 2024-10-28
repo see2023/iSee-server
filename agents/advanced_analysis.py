@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from typing import Callable, List, Dict
 from llm import get_llm, LLMBase
 from common.config import config
@@ -11,7 +12,7 @@ from agents.task_manager import TaskManager
 
 
 class AdvancedAnalysis:
-    def __init__(self, llm_engine: LLMBase, send_to_app: Callable, trigger_visual_analysis: Callable):
+    def __init__(self, llm_engine: LLMBase, send_to_app: Callable, trigger_visual_analysis: Callable, get_recent_scene_description_time: Callable):
         self.llm_engine = llm_engine
         self.analysis_llm = get_llm()  # 单独的 LLM 客户端
         self._analysis_in_progress = False
@@ -20,7 +21,7 @@ class AdvancedAnalysis:
         self.user_state = ""
         self.send_to_app = send_to_app
         self.trigger_visual_analysis = trigger_visual_analysis
-        
+        self.get_recent_scene_description_time = get_recent_scene_description_time
         # 初始化 TaskManager
         self.task_manager = TaskManager(
             self.llm_engine,
@@ -149,7 +150,18 @@ class AdvancedAnalysis:
         try:
             analysis_result = await self.analyze_conversation()
             self.llm_engine.clear_history()
-            
+
+            if analysis_result['needs_visual_analysis']:
+                logging.info("AdvancedAnalysis needs_visual_analysis: " + analysis_result['visual_analysis_prompt'])
+                visual_analysis_prompt = analysis_result['visual_analysis_prompt']
+                now = time.time()
+                await self.trigger_visual_analysis(visual_analysis_prompt)
+                # wait 10 seconds for visual analysis
+                for _ in range(100):  
+                    if self.get_recent_scene_description_time() > now:
+                        break
+                    await asyncio.sleep(0.1)
+
             search_results = None
             if analysis_result['needs_search']:
                 search_results = await search(analysis_result['search_keywords'])
@@ -170,10 +182,6 @@ class AdvancedAnalysis:
                 else:
                     logging.info(f"Improved response is too similar to the original (difflib), skipping: {improved_response}")
             
-            if analysis_result['needs_visual_analysis']:
-                logging.info("AdvancedAnalysis needs_visual_analysis: " + analysis_result['visual_analysis_reason'])
-                visual_analysis_prompt = analysis_result['visual_analysis_reason']
-                await self.trigger_visual_analysis(visual_analysis_prompt)
             
             if analysis_result['needs_followup']:
                 logging.info("AdvancedAnalysis needs_followup: " + analysis_result['followup_topic'])
@@ -193,50 +201,77 @@ class AdvancedAnalysis:
         finally:
             self._analysis_in_progress = False
 
-    async def analyze_conversation(self) -> Dict:
+    async def analyze_conversation(self, enable_visual_analysis: bool = True) -> Dict:
+        # Build criteria list based on enable_visual_analysis
+        base_criteria = [
+            "Provide a brief, objective summary of the current conversation.",
+            "What is the user's current emotional state or intent?",
+            "Is additional information from an internet search needed? [Yes/No] If so, provide search keywords."
+        ]
+        
+        if enable_visual_analysis:
+            base_criteria.append("Is visual analysis needed for better understanding or response? [Yes/No] If so, what kind?")
+        
+        base_criteria.extend([
+            "Does the last response need improvement? [Yes/No] If yes, explain why, considering any new information from search or visual analysis.",
+            "Are there any topics or questions that need follow-up? [Yes/No]"
+        ])
+
+        # Build numbered criteria string
+        criteria = "\n".join(f"        {i+1}. {criterion}" for i, criterion in enumerate(base_criteria))
+
+        # Update example format to match new order
+        example1 = """summary: The user asked about dinner time, and the assistant provided ...
+            user_state: Seeking information about dinner time, appears slightly impatient
+            needs_search: No
+            search_keywords: N/A"""
+        
+        if enable_visual_analysis:
+            example1 += """
+            needs_visual_analysis: No
+            visual_analysis_prompt: N/A"""
+        
+        example1 += """
+            needs_improvement: Yes
+            improvement_reason: The response was off-topic and didn't address the user's question about dinner time.
+            needs_followup: Yes
+            followup_topic: Specific dinner time"""
+
+        example2 = """summary: The user inquired about weather data, and the assistant ...
+            user_state: Curious about weather data 
+            needs_search: Yes
+            search_keywords: reasonable and short keywords for improving the response if needed."""
+        
+        if enable_visual_analysis:
+            example2 += """
+            needs_visual_analysis: Yes
+            visual_analysis_prompt: Please analyze the current scene and tell me what the user is doing and dressing like."""
+        
+        example2 += """
+            needs_improvement: Yes
+            improvement_reason: With the search results and visual analysis, we can provide more accurate and contextual weather information.
+            needs_followup: No
+            followup_topic: N/A"""
+
         system_prompt = f"""
-        {self.llm_engine.get_time_and_location()}
-        You are an AI assistant. Analyze the following conversation and provide insights:
+            {self.llm_engine.get_time_and_location()}
+            You are an AI assistant. Analyze the following conversation and provide insights:
 
-        Previous conversation summary: [ {self.conversation_summary}]
-        Previous user state: [ {self.user_state}]
+            Previous conversation summary: [ {self.conversation_summary}]
+            Previous user state: [ {self.user_state}]
 
-        Analyze the conversation based on the following criteria:
-        1. Provide a brief, objective summary of the current conversation.
-        2. Does the last response need improvement? [Yes/No] If so, why?
-        3. Is visual analysis needed for better understanding or response? [Yes/No] If so, what kind?
-        4. Are there any topics or questions that need follow-up? [Yes/No]
-        5. What is the user's current emotional state or intent?
-        6. Is additional information from an internet search needed? [Yes/No] If so, provide search keywords.
+            Analyze the conversation based on the following criteria:{criteria}
 
-        Provide your analysis in a structured, single-line format for each point. Be detailed, well-reasoned, and comprehensive in your analysis. Example format:
+            Provide your analysis in a structured, single-line format for each point. Be detailed, well-reasoned, and comprehensive in your analysis. Example format:
 
-        Example 1:
-        summary: The user asked about dinner time, and the assistant provided ...
-        needs_improvement: Yes
-        improvement_reason: The response was off-topic and didn't address the user's question about dinner time.
-        needs_visual_analysis: No
-        visual_analysis_reason: N/A
-        needs_followup: Yes
-        followup_topic: Specific dinner time
-        user_state: Seeking information about dinner time
-        needs_search: No
-        search_keywords: N/A
+            Example 1:
+            {example1}
 
-        Example 2:
-        summary: The user inquired about weather data, and the assistant ...
-        needs_improvement: No
-        improvement_reason: N/A
-        needs_visual_analysis: Yes
-        visual_analysis_reason: We can see what the user is doing and feeling to help answering the question if needed.
-        needs_followup: No
-        followup_topic: N/A
-        user_state: Curious about weather data
-        needs_search: Yes
-        search_keywords: reasonable and short keywords for improving the response if needed.
+            Example 2:
+            {example2}
 
-        Now, analyze the conversation and provide your insights in the same format. Your latest response must strictly follow the above format.
-        """  
+            Now, analyze the conversation and provide your insights in the same format. Your latest response must strictly follow the above format.
+            """  
 
         prompt_message = Message(role=MessageRole.user, content='Please analyze the conversation and provide insights in the format required by the system prompt')
         analysis = await self.llm_engine.generate_text(self._user, config.llm.model, strict_mode=False, use_redis_history=True, system_prompt=system_prompt, addtional_user_message=prompt_message)
@@ -260,7 +295,7 @@ class AdvancedAnalysis:
             "needs_improvement": False,
             "improvement_reason": "",
             "needs_visual_analysis": False,
-            "visual_analysis_reason": "",
+            "visual_analysis_prompt": "",
             "needs_followup": False,
             "followup_topic": "",
             "user_state": "",
@@ -287,8 +322,8 @@ class AdvancedAnalysis:
                 result['improvement_reason'] = value if value.lower() != 'n/a' else ""
             elif key == 'needs_visual_analysis':
                 result['needs_visual_analysis'] = self.string_means_yes(value)
-            elif key == 'visual_analysis_reason':
-                result['visual_analysis_reason'] = value if value.lower() != 'n/a' else ""
+            elif key == 'visual_analysis_prompt':
+                result['visual_analysis_prompt'] = value if value.lower() != 'n/a' else ""
             elif key == 'needs_followup':
                 result['needs_followup'] = self.string_means_yes(value)
             elif key == 'followup_topic':

@@ -20,19 +20,41 @@ def image_to_base64(image_path):
 # 服务器地址
 default_url = "http://192.168.123.46:8000/v1/chat/completions"
 
-async def send_to_openai_api(messages: List[Message], model: str = "Qwen2-VL-2B-Instruct-AWQ", url: str = default_url) -> str:
+async def send_to_openai_api(messages: List[Message], model: str = "Qwen2-VL-2B-Instruct-AWQ", url: str = default_url, max_images: int = 2) -> str:
     url = url.replace("/chat/completions", "")
+    image_count = 0
+    for msg in messages:
+        if isinstance(msg.content, list):
+            for item in msg.content:
+                if isinstance(item, dict) and item.get('type') == "image_url":
+                    image_count += 1
+    # 如果image_count超过max_images，则从前往后删除，直到满足条件
+    if image_count > max_images:
+        while image_count > max_images:
+            for msg in messages:
+                if isinstance(msg.content, list):
+                    for item in msg.content:
+                        if isinstance(item, dict) and item.get('type') == "image_url":
+                            msg.content.remove(item)
+                            image_count -= 1
+                            logging.debug(f"Remove image, current image_count: {image_count}")
+                            break
+                if image_count <= max_images:
+                    break
     custom_url = config.llm.openai_custom_mm_url
     if custom_url:
         url = custom_url
-    client = openai.AsyncOpenAI(api_key=os.getenv(config.llm.openai_custom_key_envname), base_url=url)
-    response = await client.chat.completions.create(
-        model=model,
-        messages=[message.to_dict() for message in messages],
-        functions=None,
-        function_call=None,
-    )
-    return response.choices[0].message.content
+    try:
+        client = openai.AsyncOpenAI(api_key=os.getenv(config.llm.openai_custom_key_envname), base_url=url)
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[message.to_dict() for message in messages],
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        logging.info(f'send mm to {url} error: {e}')
+        return ''
+
 
 
 # 发送消息到服务器，返回响应Content
@@ -76,28 +98,37 @@ async def main():
     logging.basicConfig(level=logging.INFO, 
         format='%(asctime)s - %(levelname)s [in %(pathname)s:%(lineno)d] - %(message)s')
     # 使用 os.path.expanduser() 展开 ~ 符号
-    image_path = os.path.expanduser("~/Pictures/boy3.jpg")
-    logging.info(f"Image path: {image_path}")
+    image_path3 = os.path.expanduser("~/Pictures/boy3.jpg")
+    image_path2 = os.path.expanduser("~/Pictures/boy2.jpg")
+    image_path1 = os.path.expanduser("~/Pictures/boy1.jpg")
+    logging.info(f"Image path: {image_path3}")
 
     # 将图片转换为base64
-    image_base64 = image_to_base64(image_path)
-    logging.debug(f"Image base64: {image_base64[:50]}...")  # 只打印前50个字符
+    image_base64_3 = image_to_base64(image_path3)
+    logging.debug(f"Image base64: {image_base64_3[:50]}...")  # 只打印前50个字符
+    image_base64_2 = image_to_base64(image_path2)
+    image_base64_1 = image_to_base64(image_path1)
 
     # 创建 Message 对象
     messages = [
         Message(
+            role=MessageRole.system,
+            content="你是一个儿童心理学家，请根据图片中的孩子回答问题。"
+        ),
+        Message(
             role=MessageRole.user,
             content=[
-            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
-            {"type": "text", "text": "图中的孩子在干嘛？他坐的端正吗？他开心吗？"}
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64_3}"}},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64_2}"}},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64_1}"}},
+            {"type": "text", "text": "图中的孩子们在干嘛？他们坐的端正吗？他们开心吗？"}
         ]
     )
     ]
 
     # 发送消息到服务器
-    content = await send_message_to_server(messages, model="qwen-vl-max-0809")
+    content = await send_message_to_server(messages, model="Qwen/Qwen2-VL-2B-Instruct-AWQ")
     logging.info(f"Content: {content}")
 
 if __name__ == "__main__":
     asyncio.run(main())
-

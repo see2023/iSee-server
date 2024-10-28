@@ -51,11 +51,16 @@ class MessageConsumer():
         self._app_msg_queue = asyncio.Queue[str]()
         self.tts_manager = TTSManager()
         self._task_tts = None
+        self._recent_scene_description_time = 0
         self.advanced_analysis = AdvancedAnalysis(
             self.llm_engine,
             send_to_app=self.send_to_app,
-            trigger_visual_analysis=self.trigger_visual_analysis
+            trigger_visual_analysis=self.trigger_visual_analysis,
+            get_recent_scene_description_time=self.get_recent_scene_description_time
         )
+    
+    def get_recent_scene_description_time(self):
+        return self._recent_scene_description_time
     
     def clear_tts_msg_queue(self):
         while not self._tts_msg_queue.empty():
@@ -115,6 +120,9 @@ class MessageConsumer():
                     if msg.srcname == CHAT_MEMBER_APP and msg.message is not None and len(msg.message) > 0:
                         self._app_msg_queue.put_nowait(msg.message)
                         # self.llm_engine.interrupt(msg.message)
+                    if msg.srcname == CHAT_MEMBER_ASSITANT:
+                        if msg.message.startswith("[其他assistant看到场景的描述]"):
+                            self._recent_scene_description_time = time.time()
 
                 def process_move_cmd(msg: ChatExtMessage):
                     if msg.srcname == CHAT_MEMBER_ASSITANT:  # voice from app, but vad from assistant

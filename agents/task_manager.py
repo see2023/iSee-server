@@ -240,11 +240,11 @@ class TaskManager:
         suggestions: [list of suggestions for next steps, or "N/A" if completed]
         search_queries: [list of search queries that could help with the task, or "N/A" if completed]
         need_visual_analysis: [Yes/No]
-        visual_analysis_reason: [reason for visual analysis, if needed, or "N/A" if not needed]
+        visual_analysis_prompt: [prompt for visual analysis, if needed, or "N/A" if not needed]
         """
 
         self.task_llm.clear_history()
-        addtional_user_message = Message(role=MessageRole.user, content=f"Reply in the format required by the system prompt: progress_assessment: , is_completed: , delete_task: , suggestions: , search_queries: , need_visual_analysis: , visual_analysis_reason: .")
+        addtional_user_message = Message(role=MessageRole.user, content=f"Reply in the format required by the system prompt: progress_assessment: , is_completed: , delete_task: , suggestions: , search_queries: , need_visual_analysis: , visual_analysis_prompt: .")
         analysis = await self.task_llm.generate_text(self._user, model=config.llm.model, strict_mode=False, use_redis_history=True, system_prompt=system_prompt, addtional_user_message=addtional_user_message)
         result = self._parse_task_check_result(analysis)
         
@@ -261,7 +261,7 @@ class TaskManager:
             "suggestions": [],
             "search_queries": [],
             "need_visual_analysis": False,
-            "visual_analysis_reason": ""
+            "visual_analysis_prompt": ""
         }
         
         current_key = ""
@@ -279,6 +279,8 @@ class TaskManager:
                         result[key] = value.strip()
             elif current_key in ["suggestions", "search_queries"]:
                 result[current_key].append(line.strip().strip('- '))
+            elif current_key == "visual_analysis_prompt":
+                result[current_key] = value.strip()
 
         return result
 
@@ -313,8 +315,8 @@ class TaskManager:
                 if merged_results:
                     await self.send_to_app(merged_results, save_to_redis=True)
 
-        if result['need_visual_analysis'] and not "N/A" in result['visual_analysis_reason']:
-            await self.trigger_visual_analysis(f"请分析当前场景，看是否有助于解决任务 '{task.name}'。原因：{result['visual_analysis_reason']}")
+        if result['need_visual_analysis'] and not "N/A" in result['visual_analysis_prompt']:
+            await self.trigger_visual_analysis(f"请分析当前场景，看是否有助于解决任务 '{task.name}'。提示词：{result['visual_analysis_prompt']}")
 
         await self.save_tasks_to_redis()
 

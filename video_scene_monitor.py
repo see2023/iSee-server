@@ -87,7 +87,7 @@ class VideoSceneMonitor:
             if scene_description.startswith("description:"):
                 scene_description = scene_description[11:]
             logging.info("Scene changed or anomaly detected, describe to other assistant")
-            await self.send_message_callback(f"[assistant看到场景的描述]:({scene_description})", with_tts=False, save_to_redis=True)
+            await self.send_message_callback(f"[其他assistant看到场景的描述]:({scene_description})", with_tts=False, save_to_redis=True)
 
     async def analyze_scene(self, add_question: str = ''):
         if not self.has_new_img and add_question==self.last_add_question:
@@ -113,9 +113,10 @@ class VideoSceneMonitor:
         user_prompt = ""
         image_contents = [
         ]
-        if len(self.last_sentences) > 0:
-            for sentence in self.last_sentences:
-                user_prompt += f"{sentence}\n"
+        if self.enalbe_self_reaction:
+            if len(self.last_sentences) > 0:
+                for sentence in self.last_sentences:
+                    user_prompt += f"{sentence}\n"
         if add_question:
             user_prompt += f"{add_question}\n"
         for _, img in  enumerate(self.imgs):
